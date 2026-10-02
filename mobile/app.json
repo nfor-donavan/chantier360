@@ -1,0 +1,17 @@
+{
+  "expo": {
+    "name": "Chantier360",
+    "slug": "chantier360-foreman",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "splash": { "image": "./assets/splash-icon.png", "resizeMode": "contain", "backgroundColor": "#0F1E38" },
+    "android": {
+      "package": "cm.chantier360.foreman",
+      "adaptiveIcon": { "foregroundImage": "./assets/adaptive-icon.png", "backgroundColor": "#0F1E38" },
+      "permissions": ["CAMERA"]
+    },
+    "plugins": [["expo-image-picker", { "cameraPermission": "Chantier360 needs the camera to photograph delivery notes and site headcount." }]]
+  }
+}
