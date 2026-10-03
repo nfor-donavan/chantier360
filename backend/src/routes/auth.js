@@ -9,7 +9,7 @@ const { httpError, wrap } = require('../utils/http');
 
 const limiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 30, standardHeaders: true, legacyHeaders: false, message: { error: 'Too many sign-in attempts. Try again in a few minutes.' } });
 
-const publicUser = (u, tenant, site) => ({ id: u._id, name: u.name, email: u.email, role: u.role, title: u.title, tenant: tenant && { id: tenant._id, companyName: tenant.companyName }, site: site && { id: site._id, siteName: site.siteName, locationCity: site.locationCity, plannedWorkers: site.plannedWorkers } });
+const publicUser = (u, tenant, site) => ({ id: u._id, name: u.name, email: u.email, role: u.role, title: u.title, tenant: tenant && { id: tenant._id, companyName: tenant.companyName }, site: site && { id: site._id, siteName: site.siteName, locationCity: site.locationCity, plannedWorkers: site.plannedWorkers, dailyRateXAF: site.dailyRateXAF } });
 
 router.post('/login', limiter, wrap(async (req, res) => {
   const { email, password } = req.body || {};

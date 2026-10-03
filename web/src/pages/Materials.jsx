@@ -1,48 +1,61 @@
 import React, { useState } from 'react';
 import { Check, X } from 'lucide-react';
 import { useStore } from '../store.jsx';
-import { fmtDate, fmtXAF, shortfallPct, siteName } from '../data.js';
+import { api } from '../api.js';
+import { useApi } from '../hooks.js';
+import Gate from '../components/Gate.jsx';
+import { fmtDate, fmtXAF, pct } from '../utils.js';
 
 export default function Materials() {
-  const { deliveries, requests, decideRequest } = useStore();
+  const { t, lang, notify, bump } = useStore();
   const [tab, setTab] = useState('deliveries');
   const [onlyFlagged, setOnlyFlagged] = useState(false);
-  const rows = deliveries.filter((d) => !onlyFlagged || shortfallPct(d) > 0);
+  const sites = useApi(api.sites), logs = useApi(api.logs), reqs = useApi(api.requests);
+  const siteName = (id) => sites.data?.find((s) => s._id === id)?.siteName ?? '';
+  const decide = async (id, status) => {
+    try { await api.decideRequest(id, status); notify(t(status)); reqs.reload(); bump(); } catch (e) { notify(e.message); }
+  };
   return (
-    <section className="panel">
-      <div className="tabs">
-        <button className={tab === 'deliveries' ? 'on' : ''} onClick={() => setTab('deliveries')}>Deliveries</button>
-        <button className={tab === 'requests' ? 'on' : ''} onClick={() => setTab('requests')}>Material requests <em className="badge">{requests.filter((r) => r.status === 'Pending').length}</em></button>
-        {tab === 'deliveries' && <label className="check"><input type="checkbox" checked={onlyFlagged} onChange={(e) => setOnlyFlagged(e.target.checked)} /> Show flagged only</label>}
-      </div>
-      {tab === 'deliveries' ? (
-        <table>
-          <thead><tr><th>Date</th><th>Material</th><th>Site</th><th>Supplier</th><th className="r">Ordered</th><th className="r">Received</th><th>Check</th><th>Logged by</th></tr></thead>
-          <tbody>
-            {rows.map((d) => { const p = shortfallPct(d); return (
-              <tr key={d.id} className={p > 0 ? 'flag' : ''}>
-                <td>{fmtDate(d.date)}</td><td>{d.material}</td><td>{siteName(d.siteId)}</td><td>{d.supplier}</td>
-                <td className="r">{d.ordered}</td><td className="r">{d.received}</td>
-                <td>{p > 0 ? <span className="tag bad">{d.ordered - d.received} short ({p.toFixed(1)}%)</span> : <span className="tag ok">Matches order</span>}</td>
-                <td>{d.loggedBy}</td>
-              </tr>); })}
-          </tbody>
-        </table>
-      ) : (
-        <table>
-          <thead><tr><th>Requested</th><th>Material</th><th>Site</th><th className="r">Quantity</th><th className="r">Estimate</th><th>By</th><th>Decision</th></tr></thead>
-          <tbody>
-            {requests.map((r) => (
-              <tr key={r.id}>
-                <td>{fmtDate(r.date)}</td><td>{r.material}</td><td>{siteName(r.siteId)}</td><td className="r">{r.quantity}</td><td className="r">{fmtXAF(r.estimate)}</td><td>{r.requestedBy}</td>
-                <td>{r.status === 'Pending' ? (
-                  <div className="actions"><button className="btn ok" onClick={() => decideRequest(r.id, 'Approved')}><Check size={15} /> Approve</button><button className="btn no" onClick={() => decideRequest(r.id, 'Rejected')}><X size={15} /> Reject</button></div>
-                ) : <span className={'tag ' + (r.status === 'Approved' ? 'ok' : 'bad')}>{r.status}</span>}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-    </section>
+    <Gate states={[sites, logs, reqs]}>{() => (
+      <section className="panel">
+        <div className="tabs">
+          <button className={tab === 'deliveries' ? 'on' : ''} onClick={() => setTab('deliveries')}>{t('tab.deliveries')}</button>
+          <button className={tab === 'requests' ? 'on' : ''} onClick={() => setTab('requests')}>{t('tab.requests')} <em className="badge">{reqs.data.filter((r) => r.status === 'Pending').length}</em></button>
+          {tab === 'deliveries' && <label className="check"><input type="checkbox" checked={onlyFlagged} onChange={(e) => setOnlyFlagged(e.target.checked)} /> {t('flaggedonly')}</label>}
+        </div>
+        {tab === 'deliveries' ? (
+          <table>
+            <thead><tr><th>{t('col.date')}</th><th>{t('col.material')}</th><th>{t('col.site')}</th><th>{t('col.supplier')}</th><th className="r">{t('col.ordered')}</th><th className="r">{t('col.received')}</th><th>{t('col.check')}</th><th>{t('col.by')}</th></tr></thead>
+            <tbody>
+              {logs.data.filter((l) => !onlyFlagged || l.flagged).map((l) => {
+                const p = pct(l.quantityOrdered, l.quantityReceived);
+                return (
+                  <tr key={l._id} className={p > 0 ? 'flag' : ''}>
+                    <td>{fmtDate(l.createdAt, lang)}</td><td>{l.materialType}</td><td>{siteName(l.siteId)}</td><td>{l.supplierName}</td>
+                    <td className="r">{l.quantityOrdered}</td><td className="r">{l.quantityReceived}</td>
+                    <td>{p > 0 ? <span className="tag bad">{l.shortfall} {t('short')} ({p.toFixed(1)}%)</span> : <span className="tag ok">{t('matches')}</span>}</td>
+                    <td>{l.loggedBy?.name}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        ) : (
+          <table>
+            <thead><tr><th>{t('col.requested')}</th><th>{t('col.material')}</th><th>{t('col.site')}</th><th className="r">{t('col.qty')}</th><th className="r">{t('col.estimate')}</th><th>{t('col.by')}</th><th>{t('col.decision')}</th></tr></thead>
+            <tbody>
+              {reqs.data.map((r) => (
+                <tr key={r._id}>
+                  <td>{fmtDate(r.createdAt, lang)}</td><td>{r.materialType}</td><td>{siteName(r.siteId)}</td><td className="r">{r.quantity}</td><td className="r">{fmtXAF(r.estimateXAF)}</td><td>{r.requestedBy?.name}</td>
+                  <td>{r.status === 'Pending' ? (
+                    <div className="actions"><button className="btn ok" onClick={() => decide(r._id, 'Approved')}><Check size={15} /> {t('approve')}</button><button className="btn no" onClick={() => decide(r._id, 'Rejected')}><X size={15} /> {t('reject')}</button></div>
+                  ) : <span className={'tag ' + (r.status === 'Approved' ? 'ok' : 'bad')}>{t(r.status)}</span>}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </section>
+    )}</Gate>
   );
 }

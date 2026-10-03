@@ -34,8 +34,14 @@ Scan the QR code with Expo Go on an Android phone.
 
 Demo tip: on the home screen, switch the connection toggle off, log a short delivery, then switch it back on to watch the offline queue send automatically.
 
-## Prototype notes
-All data is local demo data. The Express and MongoDB backend with tenantId isolation is the next milestone.
+## How the three parts connect
+Both apps now talk to the backend. Sign in on either app and the data comes from MongoDB Atlas.
+- Web: set `VITE_API_URL` (see `web/.env.example`). On Render, add it under the Static Site's environment settings and redeploy.
+- Mobile: set `EXPO_PUBLIC_API_URL` in `mobile/eas.json` (both build profiles) to your Render API URL, then rebuild.
+- Backend: run `npm run seed` again after updating, because purchase orders and site wage rates were added.
+- Both apps support English and French, and light and dark mode (the choice is remembered).
+- Foremen deliver against purchase orders created by head office, so the ordered quantity comes from the server, not the phone.
+- Photos go to Cloudinary when `CLOUDINARY_*` variables are set on the backend. Without them they are lost on each Render deploy.
 
 ## Backend (`backend/`)
 Node.js + Express + Mongoose on MongoDB Atlas. One shared database, every record carries a `tenantId`, and a Mongoose plugin refuses any query that does not filter by it.

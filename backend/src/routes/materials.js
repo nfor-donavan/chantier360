@@ -1,5 +1,5 @@
 const router = require('express').Router();
-const { MaterialLog, MaterialRequest } = require('../models');
+const { MaterialLog, MaterialRequest, PurchaseOrder } = require('../models');
 const { requireHQ, isForeman } = require('../middleware/auth');
 const { createMaterialLog } = require('../services/records');
 const { httpError, wrap } = require('../utils/http');
@@ -15,6 +15,15 @@ router.post('/logs', wrap(async (req, res) => {
   const siteId = isForeman(req) ? req.user.siteId : req.body.siteId;
   const doc = await createMaterialLog({ tenantId: req.user.tenantId, userId: req.user.id, siteId, data: req.body });
   res.status(201).json(doc);
+}));
+
+// Purchase orders: what HQ has ordered for a site. Foremen deliver against these.
+router.get('/orders', wrap(async (req, res) => {
+  res.json(await PurchaseOrder.find({ ...siteFilter(req), status: req.query.status || 'Open' }).sort({ createdAt: -1 }));
+}));
+router.post('/orders', requireHQ, wrap(async (req, res) => {
+  const { siteId, materialType, supplierName, quantityOrdered } = req.body;
+  res.status(201).json(await PurchaseOrder.create({ tenantId: req.user.tenantId, siteId, materialType, supplierName, quantityOrdered }));
 }));
 
 // Material requests

@@ -6,12 +6,34 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-    "splash": { "image": "./assets/splash-icon.png", "resizeMode": "contain", "backgroundColor": "#0F1E38" },
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0F1E38"
+    },
     "android": {
       "package": "cm.chantier360.foreman",
-      "adaptiveIcon": { "foregroundImage": "./assets/adaptive-icon.png", "backgroundColor": "#0F1E38" },
-      "permissions": ["CAMERA"]
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0F1E38"
+      },
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
+      ]
     },
-    "plugins": [["expo-image-picker", { "cameraPermission": "Chantier360 needs the camera to photograph delivery notes and site headcount." }]]
+    "plugins": [
+      [
+        "expo-image-picker",
+        {
+          "cameraPermission": "Chantier360 needs the camera to photograph delivery notes and site headcount."
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "57cfdaba-b37a-496d-8af0-c3d43e0d711e"
+      }
+    }
   }
 }

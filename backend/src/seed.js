@@ -15,13 +15,13 @@ const d = (s) => new Date(s + 'T09:00:00Z');
   const rival = await M.Tenant.create({ companyName: 'Demo Rival BTP', officeAddress: 'Akwa, Douala' });
   const tenantId = mac._id;
 
-  const S = (siteName, locationCity, budget, spent, progress, planned, start, end, status) =>
-    ({ tenantId, siteName, locationCity, budgetXAF: budget, spentXAF: spent, progressPct: progress, plannedWorkers: planned, startDate: d(start), endDate: d(end), status });
+  const S = (siteName, locationCity, budget, spent, progress, planned, start, end, status, rate = 5000) =>
+    ({ tenantId, siteName, locationCity, budgetXAF: budget, spentXAF: spent, progressPct: progress, plannedWorkers: planned, dailyRateXAF: rate, startDate: d(start), endDate: d(end), status });
   const [bastos, bonanjo, kribi, bamenda] = await M.ProjectSite.create([
     S('Bastos Residential Complex', 'Yaoundé', 1850000000, 1120000000, 62, 46, '2026-01-12', '2027-03-30', 'Active'),
-    S('Bonanjo Office Tower', 'Douala', 4200000000, 2310000000, 54, 112, '2025-09-01', '2027-06-30', 'Active'),
+    S('Bonanjo Office Tower', 'Douala', 4200000000, 2310000000, 54, 112, '2025-09-01', '2027-06-30', 'Active', 5500),
     S('Kribi Port Warehouse', 'Kribi', 960000000, 810000000, 83, 36, '2026-02-02', '2026-12-15', 'Active'),
-    S('Bamenda Regional Clinic', 'Bamenda', 640000000, 120000000, 17, 14, '2026-08-10', '2027-08-30', 'Planning'),
+    S('Bamenda Regional Clinic', 'Bamenda', 640000000, 120000000, 17, 14, '2026-08-10', '2027-08-30', 'Planning', 4500),
   ]);
   await M.ProjectSite.create(S('Garoua Road Bridge', 'Garoua', 1300000000, 410000000, 31, 0, '2026-03-01', '2027-04-30', 'Suspended'));
 
@@ -53,6 +53,15 @@ const d = (s) => new Date(s + 'T09:00:00Z');
   ];
   for (const [site, u, n, rate, date, status] of att)
     await createAttendance({ tenantId, userId: u._id, siteId: site._id, createdAt: d(date), data: { totalWorkersPresent: n, ratePerWorkerXAF: rate, status, date: d(date) } });
+
+  const orders = [
+    [bastos, 'Dangote Cement (bags)', 'Cimencam Distribution', 600], [bastos, 'Iron Rods 12mm (units)', 'Sotrafer SARL', 1200],
+    [bastos, 'Hollow Blocks 15cm (units)', 'Briqueterie Mfoundi', 4000], [bastos, 'Sand (m³)', 'Carrières du Littoral', 40],
+    [kribi, 'Gravel 15/25 (m³)', 'Carrières du Littoral', 80], [kribi, 'Dangote Cement (bags)', 'Cimencam Distribution', 700],
+    [bonanjo, 'Iron Rods 16mm (units)', 'Sotrafer SARL', 900], [bamenda, 'Dangote Cement (bags)', 'Cimencam Distribution', 300],
+  ];
+  for (const [site, materialType, supplierName, quantityOrdered] of orders)
+    await M.PurchaseOrder.create({ tenantId, siteId: site._id, materialType, supplierName, quantityOrdered });
 
   const reqs = [
     [bonanjo, nkeng, 'Dangote Cement (bags)', 2000, 13000000], [kribi, carine, 'Roofing sheets, 0.4mm (units)', 450, 8100000],

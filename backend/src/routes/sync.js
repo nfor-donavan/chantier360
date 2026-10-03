@@ -11,7 +11,7 @@ async function run(items = [], fn, req) {
     try {
       const siteId = isForeman(req) ? req.user.siteId : data.siteId;
       const doc = await fn({ tenantId: req.user.tenantId, userId: req.user.id, siteId, data: { ...data, status: undefined }, createdAt: data.createdAt && new Date(data.createdAt) });
-      out.push({ clientId: data.clientId, result: 'created', id: doc._id });
+      out.push({ clientId: data.clientId, result: 'created', id: doc._id, flagged: !!doc.flagged });
     } catch (e) {
       out.push({ clientId: data.clientId, result: e.code === 11000 ? 'duplicate' : 'error', error: e.code === 11000 ? undefined : e.message });
     }

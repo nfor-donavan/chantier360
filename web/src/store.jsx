@@ -1,51 +1,35 @@
-import React, { createContext, useContext, useMemo, useState } from 'react';
-import { attendance as a0, deliveries as d0, requests as r0, demoAccounts, shortfallPct } from './data.js';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { api, setToken } from './api.js';
+import { makeT } from './i18n.js';
 
 const Ctx = createContext(null);
 export const useStore = () => useContext(Ctx);
 
+const read = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } };
+
 export function StoreProvider({ children }) {
-  const [user, setUser] = useState(() => {
-    try { return JSON.parse(localStorage.getItem('c360_user')); } catch { return null; }
-  });
-  const [attendance, setAttendance] = useState(a0);
-  const [requests, setRequests] = useState(r0);
-  const [deliveries] = useState(d0);
-  const [ack, setAck] = useState({});
+  const [user, setUser] = useState(() => read('c360_user', null));
+  const [lang, setLang] = useState(() => localStorage.getItem('c360_lang') || (navigator.language?.startsWith('fr') ? 'fr' : 'en'));
+  const [theme, setTheme] = useState(() => localStorage.getItem('c360_theme') || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
   const [toast, setToast] = useState(null);
+  const [tick, setTick] = useState(0);
 
-  const notify = (msg) => { setToast(msg); setTimeout(() => setToast(null), 2600); };
+  useEffect(() => { document.documentElement.dataset.theme = theme; localStorage.setItem('c360_theme', theme); }, [theme]);
+  useEffect(() => { document.documentElement.lang = lang; localStorage.setItem('c360_lang', lang); }, [lang]);
 
-  const login = (email, password) => {
-    const u = demoAccounts.find((x) => x.email === email && x.password === password);
-    if (!u) return false;
-    localStorage.setItem('c360_user', JSON.stringify(u)); setUser(u); return true;
+  const logout = useCallback(() => { setToken(''); localStorage.removeItem('c360_user'); setUser(null); }, []);
+  useEffect(() => { window.addEventListener('c360:logout', logout); return () => window.removeEventListener('c360:logout', logout); }, [logout]);
+
+  const login = async (email, password) => {
+    const { token, user: u } = await api.login(email, password);
+    if (u.role === 'foreman') throw Object.assign(new Error('Foremen use the mobile app. Sign in with a head office account.'), { status: 403 });
+    setToken(token); localStorage.setItem('c360_user', JSON.stringify(u)); setUser(u);
   };
-  const logout = () => { localStorage.removeItem('c360_user'); setUser(null); };
-
-  const approveAttendance = (id) => { setAttendance((l) => l.map((x) => (x.id === id ? { ...x, status: 'Approved' } : x))); notify('Attendance approved'); };
-  const decideRequest = (id, status) => { setRequests((l) => l.map((x) => (x.id === id ? { ...x, status } : x))); notify(`Request ${status.toLowerCase()}`); };
-  const acknowledge = (id) => { setAck((a) => ({ ...a, [id]: true })); notify('Alert acknowledged'); };
-
-  // Alerts are derived from the same data the foremen submit.
-  const alerts = useMemo(() => {
-    const out = [];
-    deliveries.forEach((d) => {
-      const p = shortfallPct(d);
-      if (p > 0) out.push({ id: `al-${d.id}`, kind: 'Short delivery', severity: p >= 8 ? 'High' : 'Medium', siteId: d.siteId, date: d.date,
-        text: `${d.material}: ${d.received} of ${d.ordered} received (${p.toFixed(1)}% short) from ${d.supplier}.` });
-    });
-    attendance.forEach((a) => {
-      if (a.present > a.expected * 1.1) out.push({ id: `al-${a.id}`, kind: 'Headcount anomaly', severity: 'High', siteId: a.siteId, date: a.date,
-        text: `${a.present} workers logged against ${a.expected} planned. Check the site photo before approving payroll.` });
-    });
-    out.push({ id: 'al-b1', kind: 'Budget watch', severity: 'Medium', siteId: 's3', date: '2026-09-30',
-      text: 'Spending has reached 84% of budget with 83% of the work complete.' });
-    return out.map((a) => ({ ...a, acknowledged: !!ack[a.id] })).sort((x, y) => y.date.localeCompare(x.date));
-  }, [deliveries, attendance, ack]);
+  const notify = (msg) => { setToast(msg); setTimeout(() => setToast(null), 2600); };
+  const t = useMemo(() => makeT(lang), [lang]);
 
   return (
-    <Ctx.Provider value={{ user, login, logout, attendance, requests, deliveries, alerts, approveAttendance, decideRequest, acknowledge, toast }}>
+    <Ctx.Provider value={{ user, login, logout, lang, setLang, theme, setTheme, t, toast, notify, tick, bump: () => setTick((x) => x + 1) }}>
       {children}
     </Ctx.Provider>
   );

@@ -28,6 +28,7 @@ const siteSchema = new Schema({
   spentXAF: { type: Number, default: 0, min: 0 },
   progressPct: { type: Number, default: 0, min: 0, max: 100 },
   plannedWorkers: { type: Number, default: 0 },
+  dailyRateXAF: { type: Number, default: 5000, min: 0 }, // wage per worker per day
   startDate: { type: Date, required: true },
   endDate: Date,
   status: { type: String, enum: ['Planning', 'Active', 'Suspended', 'Completed'], default: 'Active' },
@@ -38,6 +39,7 @@ const ProjectSite = mongoose.model('ProjectSite', siteSchema);
 const materialSchema = new Schema({
   siteId: { ...ref('ProjectSite'), required: true, index: true },
   clientId: String, // generated on the phone so retries never create duplicates
+  orderId: ref('PurchaseOrder'),
   materialType: { type: String, required: true },
   quantityOrdered: { type: Number, required: true, min: 0 },
   quantityReceived: { type: Number, required: true, min: 0 },
@@ -72,6 +74,16 @@ attendanceSchema.index({ tenantId: 1, clientId: 1 }, { unique: true, partialFilt
 attendanceSchema.index({ tenantId: 1, siteId: 1, date: -1 });
 const AttendanceLog = mongoose.model('AttendanceLog', attendanceSchema);
 
+const orderSchema = new Schema({
+  siteId: { ...ref('ProjectSite'), required: true, index: true },
+  materialType: { type: String, required: true },
+  supplierName: String,
+  quantityOrdered: { type: Number, required: true, min: 1 },
+  status: { type: String, enum: ['Open', 'Received'], default: 'Open' },
+}, { timestamps: true });
+orderSchema.plugin(tenantScope);
+const PurchaseOrder = mongoose.model('PurchaseOrder', orderSchema);
+
 const requestSchema = new Schema({
   siteId: { ...ref('ProjectSite'), required: true },
   materialType: { type: String, required: true },
@@ -90,6 +102,7 @@ const alertSchema = new Schema({
   kind: { type: String, required: true },
   severity: { type: String, enum: ['Low', 'Medium', 'High'], default: 'Medium' },
   message: { type: String, required: true },
+  messageFr: String,
   refId: { type: String, required: true }, // what triggered it; keeps alerts unique
   acknowledged: { type: Boolean, default: false },
   acknowledgedBy: ref('User'),
@@ -100,4 +113,4 @@ alertSchema.index({ tenantId: 1, kind: 1, refId: 1 }, { unique: true });
 alertSchema.index({ tenantId: 1, acknowledged: 1, createdAt: -1 });
 const Alert = mongoose.model('Alert', alertSchema);
 
-module.exports = { Tenant, User, ProjectSite, MaterialLog, AttendanceLog, MaterialRequest, Alert };
+module.exports = { Tenant, User, ProjectSite, PurchaseOrder, MaterialLog, AttendanceLog, MaterialRequest, Alert };

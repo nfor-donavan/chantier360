@@ -1,40 +1,49 @@
 import React, { useState } from 'react';
 import { ShieldCheck } from 'lucide-react';
 import { useStore } from '../store.jsx';
-import { demoAccounts } from '../data.js';
+import { Toggles } from '../components/Layout.jsx';
+
+const accounts = [
+  { name: 'Mballa Armand', role: 'executive', email: 'ceo@mac-construction.cm', initials: 'MA' },
+  { name: 'Ngo Biyong Estelle', role: 'admin', email: 'operations@mac-construction.cm', initials: 'NE' },
+  { name: 'Tchakounte Rodrigue', role: 'project_manager', email: 'pm@mac-construction.cm', initials: 'TR' },
+];
 
 export default function Login() {
-  const { login } = useStore();
-  const [email, setEmail] = useState(demoAccounts[0].email);
+  const { login, t } = useStore();
+  const [email, setEmail] = useState(accounts[0].email);
   const [password, setPassword] = useState('demo1234');
   const [error, setError] = useState('');
-  const submit = (e) => { e.preventDefault(); if (!login(email.trim(), password)) setError('Email or password is incorrect. Use one of the demo accounts.'); };
+  const [busy, setBusy] = useState(false);
+  const go = async (e, p) => {
+    setBusy(true); setError('');
+    try { await login(e.trim(), p); } catch (err) { setError(err.status === 0 || err.message === 'network' ? t('err.network') : err.message); }
+    setBusy(false);
+  };
   return (
     <div className="login">
       <section className="login-hero">
         <img src="/logo.png" alt="Chantier360" className="login-logo" />
         <h1>Chantier360</h1>
-        <p>Every bag, every worker, every franc on every site, accounted for.</p>
-        <ul>
-          <li><ShieldCheck size={18} /> Delivery shortfalls flagged the moment a foreman logs them</li>
-          <li><ShieldCheck size={18} /> Daily headcount verified against a site photo</li>
-          <li><ShieldCheck size={18} /> Works on site foremen's phones, even without network</li>
-        </ul>
+        <p>{t('hero.tag')}</p>
+        <ul>{['1', '2', '3'].map((n) => <li key={n}><ShieldCheck size={18} /> {t('hero.' + n)}</li>)}</ul>
       </section>
       <section className="login-form">
-        <form onSubmit={submit}>
-          <h2>Sign in to the HQ portal</h2>
-          <p className="muted">MAC Construction Co. · demo workspace</p>
-          <label>Email<input value={email} onChange={(e) => setEmail(e.target.value)} type="email" required /></label>
-          <label>Password<input value={password} onChange={(e) => setPassword(e.target.value)} type="password" required /></label>
-          {error && <div className="err">{error}</div>}
-          <button className="primary" type="submit">Sign in</button>
+        <div className="login-tools"><Toggles /></div>
+        <form onSubmit={(e) => { e.preventDefault(); go(email, password); }}>
+          <h2>{t('login.title')}</h2>
+          <p className="muted">{t('login.sub')}</p>
+          <label>{t('email')}<input value={email} onChange={(e) => setEmail(e.target.value)} type="email" required /></label>
+          <label>{t('password')}<input value={password} onChange={(e) => setPassword(e.target.value)} type="password" required /></label>
+          {busy && <div className="note">{t('wake')}</div>}
+          {error && <div className="err" role="alert">{error}</div>}
+          <button className="primary" type="submit" disabled={busy}>{busy ? t('signingin') : t('signin')}</button>
         </form>
         <div className="demo">
-          <p className="muted">Or open the dashboard directly as:</p>
-          {demoAccounts.map((a) => (
-            <button key={a.id} className="demo-card" onClick={() => login(a.email, a.password)}>
-              <div className="avatar">{a.initials}</div><div><b>{a.name}</b><span>{a.role}</span></div>
+          <p className="muted">{t('login.direct')}</p>
+          {accounts.map((a) => (
+            <button key={a.email} className="demo-card" disabled={busy} onClick={() => go(a.email, 'demo1234')}>
+              <div className="avatar">{a.initials}</div><div><b>{a.name}</b><span>{t('role.' + a.role)}</span></div>
             </button>
           ))}
         </div>
