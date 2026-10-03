@@ -16,6 +16,7 @@ const Back = ({ onPress, title }) => {
     </View>
   );
 };
+const Hint = ({ children }) => { const { C } = useApp(); return <Text style={{ color: C.mute, textAlign: 'center', marginTop: 10, fontSize: 13 }}>{children}</Text>; };
 export function Toggles({ dark }) {
   const { C, lang, setLang, toggleTheme, t } = useApp();
   const fg = dark ? '#C5D0E4' : C.mute;
@@ -128,7 +129,7 @@ export function Attendance({ user, back, save }) {
   const [n, setN] = useState(user.site?.plannedWorkers || 10);
   const [photo, setPhoto] = useState(null);
   const step = { width: 56, height: 56, borderRadius: 28, backgroundColor: C.step, alignItems: 'center', justifyContent: 'center' };
-  const snap = async () => { const r = await takePhoto(); if (r?.denied) Alert.alert(t('cam.denied')); else if (r) setPhoto(r.uri); };
+  const snap = async () => { const r = await takePhoto(); if (r?.denied) Alert.alert(t('cam.denied')); else if (r?.error) Alert.alert(t('cam.error'), r.error); else if (r) setPhoto(r.uri); };
   return (
     <View style={{ flex: 1 }}>
       <Back onPress={back} title={t('att.title')} />
@@ -147,6 +148,7 @@ export function Attendance({ user, back, save }) {
         </Card>
         <View style={{ height: 16 }} />
         <Button title={t('att.save')} disabled={!photo || n === 0} onPress={() => save({ type: 'attendance', totalWorkersPresent: n, photoUri: photo, title: `${t('att.item')}: ${n} ${t('workers')}`, detail: `${fmt(n * rate)} ${t('wages')}` })} />
+        {!photo && <Hint>{t('hint.photo')}</Hint>}
       </Screen>
     </View>
   );
@@ -160,7 +162,7 @@ export function Delivery({ orders, back, save }) {
   const sel = order && orders.find((o) => o._id === order) ;
   const got = parseInt(qty || '0', 10);
   const short = sel && qty !== '' && got < sel.quantityOrdered;
-  const snap = async () => { const r = await takePhoto(); if (r?.denied) Alert.alert(t('cam.denied')); else if (r) setPhoto(r.uri); };
+  const snap = async () => { const r = await takePhoto(); if (r?.denied) Alert.alert(t('cam.denied')); else if (r?.error) Alert.alert(t('cam.error'), r.error); else if (r) setPhoto(r.uri); };
   return (
     <View style={{ flex: 1 }}>
       <Back onPress={back} title={t('del.title')} />
@@ -187,6 +189,7 @@ export function Delivery({ orders, back, save }) {
           <PhotoBox uri={photo} label={t('del.take')} onPress={snap} />
           <View style={{ height: 16 }} />
           <Button title={t('del.save')} disabled={!photo || qty === ''} onPress={() => save({ type: 'delivery', orderId: sel._id, quantityReceived: got, photoUri: photo, flagged: short, title: sel.materialType, detail: `${got} ${t('del.detail')} ${sel.quantityOrdered} · ${sel.supplierName}` })} />
+          {(!photo || qty === '') && <Hint>{t('hint.delivery')}</Hint>}
         </>)}
       </Screen>
     </View>

@@ -39,6 +39,9 @@ const D = {
   'sync.failed': ['Rejected by the server', 'Refusé par le serveur'], remove: ['Remove', 'Supprimer'],
   'saved.title': ['Saved on this phone', 'Enregistré sur ce téléphone'], 'saved.online': ['Sending to HQ now.', 'Envoi au siège en cours.'], 'saved.offline': ['No network. It will be sent automatically when you are back online.', "Pas de réseau. L'envoi se fera automatiquement au retour de la connexion."],
   'cam.denied': ['Camera access is needed to take the photo. Allow it in your phone settings.', "L'accès à la caméra est nécessaire. Autorisez-le dans les réglages du téléphone."],
+  'cam.error': ['Could not open the camera', "Impossible d'ouvrir la caméra"],
+  'hint.photo': ['Take the group photo to enable saving.', 'Prenez la photo de groupe pour activer l\'enregistrement.'],
+  'hint.delivery': ['Enter the quantity received and take the delivery-note photo to enable saving.', 'Saisissez la quantité reçue et prenez la photo du bon de livraison pour activer l\'enregistrement.'],
   light: ['Light', 'Clair'], dark: ['Dark', 'Sombre'],
 };
 export const makeT = (lang) => (k) => (D[k] ? D[k][lang === 'fr' ? 1 : 0] : k);

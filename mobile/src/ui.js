@@ -21,12 +21,20 @@ export const Label = ({ children }) => {
   return <Text style={{ color: C.mute, fontSize: 13, fontWeight: '600', marginBottom: 6, marginTop: 14 }}>{children}</Text>;
 };
 
-// Returns a local image URI, or null when the camera is unavailable or cancelled.
+// Returns { uri }, { denied }, { error } or null when cancelled.
 export async function takePhoto() {
-  const perm = await ImagePicker.requestCameraPermissionsAsync();
-  if (!perm.granted) return { denied: true };
-  const r = await ImagePicker.launchCameraAsync({ quality: 0.4 }); // compressed for weak networks
-  return r.canceled ? null : { uri: r.assets[0].uri };
+  try {
+    const perm = await ImagePicker.requestCameraPermissionsAsync();
+    if (!perm.granted) return { denied: true };
+    const r = await ImagePicker.launchCameraAsync({ quality: 0.4 }); // compressed for weak networks
+    return r.canceled ? null : { uri: r.assets[0].uri };
+  } catch (e) {
+    // The camera app could not open: let the foreman pick a photo from the gallery instead.
+    try {
+      const r = await ImagePicker.launchImageLibraryAsync({ quality: 0.4 });
+      return r.canceled ? null : { uri: r.assets[0].uri };
+    } catch { return { error: String((e && e.message) || e) }; }
+  }
 }
 export const PhotoBox = ({ uri, onPress, label }) => {
   const { C, t } = useApp();
