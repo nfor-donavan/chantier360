@@ -1,4 +1,5 @@
 const router = require('express').Router();
+const own = require('../utils/populate');
 const { AttendanceLog } = require('../models');
 const { requireHQ, isForeman } = require('../middleware/auth');
 const { createAttendance } = require('../services/records');
@@ -6,7 +7,7 @@ const { httpError, wrap } = require('../utils/http');
 
 router.get('/', wrap(async (req, res) => {
   const filter = { tenantId: req.user.tenantId, ...(isForeman(req) ? { siteId: req.user.siteId } : req.query.siteId ? { siteId: req.query.siteId } : {}), ...(req.query.status && { status: req.query.status }) };
-  res.json(await AttendanceLog.find(filter).sort({ date: -1 }).limit(200).populate('loggedBy', 'name'));
+  res.json(await AttendanceLog.find(filter).sort({ date: -1 }).limit(200).populate(own(req, 'loggedBy')));
 }));
 router.post('/', wrap(async (req, res) => {
   const siteId = isForeman(req) ? req.user.siteId : req.body.siteId;

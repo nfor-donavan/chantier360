@@ -1,4 +1,5 @@
 const router = require('express').Router();
+const own = require('../utils/populate');
 const { MaterialLog, MaterialRequest, PurchaseOrder } = require('../models');
 const { requireHQ, isForeman } = require('../middleware/auth');
 const { createMaterialLog } = require('../services/records');
@@ -9,7 +10,7 @@ const siteFilter = (req) => ({ tenantId: req.user.tenantId, ...(isForeman(req) ?
 // Deliveries
 router.get('/logs', wrap(async (req, res) => {
   const filter = { ...siteFilter(req), ...(req.query.flagged === 'true' && { flagged: true }) };
-  res.json(await MaterialLog.find(filter).sort({ createdAt: -1 }).limit(200).populate('loggedBy', 'name'));
+  res.json(await MaterialLog.find(filter).sort({ createdAt: -1 }).limit(200).populate(own(req, 'loggedBy')));
 }));
 router.post('/logs', wrap(async (req, res) => {
   const siteId = isForeman(req) ? req.user.siteId : req.body.siteId;
@@ -29,7 +30,7 @@ router.post('/orders', requireHQ, wrap(async (req, res) => {
 // Material requests
 router.get('/requests', wrap(async (req, res) => {
   const filter = { ...siteFilter(req), ...(req.query.status && { status: req.query.status }) };
-  res.json(await MaterialRequest.find(filter).sort({ createdAt: -1 }).populate('requestedBy', 'name'));
+  res.json(await MaterialRequest.find(filter).sort({ createdAt: -1 }).populate(own(req, 'requestedBy')));
 }));
 router.post('/requests', wrap(async (req, res) => {
   const siteId = isForeman(req) ? req.user.siteId : req.body.siteId;
