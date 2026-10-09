@@ -6,7 +6,7 @@ import Gate from '../components/Gate.jsx';
 import { fmtDate } from '../utils.js';
 
 export default function Alerts() {
-  const { t, lang, notify, bump } = useStore();
+  const { t, lang, notify, bump, can } = useStore();
   const list = useApi(() => api.alerts(false));
   const ack = async (id) => { try { await api.acknowledge(id); notify(t('toast.ack')); list.reload(); bump(); } catch (e) { notify(e.message); } };
   return (
@@ -17,7 +17,7 @@ export default function Alerts() {
         {list.data.map((a) => (
           <div key={a._id} className={'feed row ' + a.severity.toLowerCase() + (a.acknowledged ? ' done' : '')}>
             <div><b>{t('kind.' + a.kind)} · {a.siteId?.siteName}</b><p>{lang === 'fr' && a.messageFr ? a.messageFr : a.message}</p><span>{fmtDate(a.createdAt, lang)} · {t('sev.' + a.severity)} {t('priority')}</span></div>
-            {a.acknowledged ? <span className="tag neutral">{t('acked')}</span> : <button className="btn ok" onClick={() => ack(a._id)}>{t('ack')}</button>}
+            {a.acknowledged ? <span className="tag neutral">{t('acked')}</span> : can('MANAGE_ALERTS') && <button className="btn ok" onClick={() => ack(a._id)}>{t('ack')}</button>}
           </div>
         ))}
       </section>

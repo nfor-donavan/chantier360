@@ -4,7 +4,6 @@ import { makeT } from './i18n.js';
 
 const Ctx = createContext(null);
 export const useStore = () => useContext(Ctx);
-
 const read = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } };
 
 export function StoreProvider({ children }) {
@@ -20,16 +19,22 @@ export function StoreProvider({ children }) {
   const logout = useCallback(() => { setToken(''); localStorage.removeItem('c360_user'); setUser(null); }, []);
   useEffect(() => { window.addEventListener('c360:logout', logout); return () => window.removeEventListener('c360:logout', logout); }, [logout]);
 
+  const persist = (u) => { localStorage.setItem('c360_user', JSON.stringify(u)); setUser(u); };
+  // Refresh permissions on load so role changes made by the General Director apply without signing in again.
+  useEffect(() => { if (user) api.me().then((r) => persist(r.user)).catch(() => {}); }, []); // eslint-disable-line
+
   const login = async (email, password) => {
     const { token, user: u } = await api.login(email, password);
-    if (u.role === 'foreman') throw Object.assign(new Error('Foremen use the mobile app. Sign in with a head office account.'), { status: 403 });
-    setToken(token); localStorage.setItem('c360_user', JSON.stringify(u)); setUser(u);
+    const web = u.permissions.includes('VIEW_DASHBOARD') || u.permissions.includes('VIEW_CLIENT_PORTAL');
+    if (!web) throw Object.assign(new Error('nohq'), { status: 403 });
+    setToken(token); persist(u);
   };
   const notify = (msg) => { setToast(msg); setTimeout(() => setToast(null), 2600); };
   const t = useMemo(() => makeT(lang), [lang]);
+  const can = (p) => !!user?.permissions?.includes(p);
 
   return (
-    <Ctx.Provider value={{ user, login, logout, lang, setLang, theme, setTheme, t, toast, notify, tick, bump: () => setTick((x) => x + 1) }}>
+    <Ctx.Provider value={{ user, login, logout, can, lang, setLang, theme, setTheme, t, toast, notify, tick, bump: () => setTick((x) => x + 1) }}>
       {children}
     </Ctx.Provider>
   );

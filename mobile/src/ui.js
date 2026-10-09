@@ -44,3 +44,23 @@ export const PhotoBox = ({ uri, onPress, label }) => {
     </Pressable>
   );
 };
+
+// Several photos in a row, with an add button.
+export const PhotoStrip = ({ uris, onAdd, onRemove, max = 3, label }) => {
+  const { C } = useApp();
+  return (
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
+      {uris.map((u, i) => (
+        <Pressable key={u + i} onPress={() => onRemove(i)} accessibilityLabel="Remove photo">
+          <Image source={{ uri: u }} style={{ width: 84, height: 84, borderRadius: 10 }} />
+          <View style={{ position: 'absolute', top: 4, right: 4, backgroundColor: '#000a', borderRadius: 10, paddingHorizontal: 6 }}><Text style={{ color: '#fff', fontSize: 12 }}>✕</Text></View>
+        </Pressable>
+      ))}
+      {uris.length < max && (
+        <Pressable onPress={onAdd} style={{ width: 84, height: 84, borderRadius: 10, borderWidth: 1.5, borderStyle: 'dashed', borderColor: C.dash, alignItems: 'center', justifyContent: 'center', backgroundColor: C.soft }}>
+          <Text style={{ fontSize: 22 }}>📷</Text><Text style={{ color: C.mute, fontSize: 11, textAlign: 'center' }}>{label}</Text>
+        </Pressable>
+      )}
+    </View>
+  );
+};

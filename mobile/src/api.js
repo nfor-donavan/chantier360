@@ -19,7 +19,7 @@ async function call(path, { method = 'GET', body, form } = {}, timeoutMs = 70000
 
 export const api = {
   login: (email, password) => call('/auth/login', { method: 'POST', body: { email, password } }),
-  orders: () => call('/materials/orders'),
+  bootstrap: () => call('/sync/bootstrap'),
   sync: (payload) => call('/sync', { method: 'POST', body: payload }),
   upload: (uri) => { const form = new FormData(); form.append('photo', { uri, name: 'photo.jpg', type: 'image/jpeg' }); return call('/uploads', { method: 'POST', form }); },
 };

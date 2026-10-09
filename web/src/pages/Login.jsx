@@ -4,9 +4,9 @@ import { useStore } from '../store.jsx';
 import { Toggles } from '../components/Layout.jsx';
 
 const accounts = [
-  { name: 'Mballa Armand', role: 'executive', email: 'ceo@mac-construction.cm', initials: 'MA' },
-  { name: 'Ngo Biyong Estelle', role: 'admin', email: 'operations@mac-construction.cm', initials: 'NE' },
-  { name: 'Tchakounte Rodrigue', role: 'project_manager', email: 'pm@mac-construction.cm', initials: 'TR' },
+  { name: 'Mballa Armand', role: 'director', email: 'ceo@mac-construction.cm', initials: 'MA' },
+  { name: 'Ngo Biyong Estelle', role: 'engineer', email: 'engineer@mac-construction.cm', initials: 'NE' },
+  { name: 'Me Abena Claire', role: 'client', email: 'client@ordre-avocats.cm', initials: 'AC' },
 ];
 
 export default function Login() {
@@ -17,7 +17,7 @@ export default function Login() {
   const [busy, setBusy] = useState(false);
   const go = async (e, p) => {
     setBusy(true); setError('');
-    try { await login(e.trim(), p); } catch (err) { setError(err.status === 0 || err.message === 'network' ? t('err.network') : err.message); }
+    try { await login(e.trim(), p); } catch (err) { setError(err.status === 0 || err.message === 'network' ? t('err.network') : err.message === 'nohq' ? t('nohq') : err.message); }
     setBusy(false);
   };
   return (

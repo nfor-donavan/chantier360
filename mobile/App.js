@@ -5,10 +5,24 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import NetInfo from '@react-native-community/netinfo';
 import { api, setToken } from './src/api';
 import { AppCtx, DARK, LIGHT, makeT } from './src/ctx';
-import { Attendance, Delivery, Home, Login, Sync } from './src/screens';
+import { Attendance, Delivery, Home, Login, PhotoScreen, Report, Sync } from './src/screens';
 
 const uid = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`; // client-side id so retries never duplicate
 const save = (k, v) => AsyncStorage.setItem(k, JSON.stringify(v)).catch(() => {});
+const EMPTY_BOOT = { orders: [], tasks: [], categories: [], stock: [], project: null };
+const isFieldUser = (u) => ['MANAGE_ATTENDANCE', 'SUBMIT_REPORTS', 'MANAGE_DELIVERIES'].some((p) => u.permissions?.includes(p));
+// Older builds stored a single photoUri. Convert so nothing waiting on the phone is lost.
+const migrate = (i) => ({ ...i, photos: i.photos || (i.photoUri ? [i.photoUri] : []) });
+
+// How each kind of record is sent to POST /api/sync.
+const toPayload = (w) => {
+  const base = { clientId: w.clientId, createdAt: w.createdAt };
+  const url = w.photoUrls?.[0];
+  if (w.type === 'delivery') return ['materialLogs', { ...base, orderId: w.orderId, quantityReceived: w.quantityReceived, deliveryNotePhotoUrl: url }];
+  if (w.type === 'attendance') return ['attendanceLogs', { ...base, totalWorkersPresent: w.totalWorkersPresent, breakdown: w.breakdown, siteGroupPhotoUrl: url }];
+  if (w.type === 'report') return ['reports', { ...base, ...w.payload, photoUrls: w.photoUrls || [] }];
+  return ['photos', { ...base, photoUrl: url, caption: w.caption, taskId: w.taskId, takenAt: w.createdAt }];
+};
 
 export default function App() {
   const system = useColorScheme();
@@ -21,7 +35,7 @@ export default function App() {
   const [netOnline, setNetOnline] = useState(true);
   const [queue, setQueue] = useState([]);
   const [history, setHistory] = useState([]);
-  const [orders, setOrders] = useState([]);
+  const [boot, setBoot] = useState(EMPTY_BOOT);
   const [syncing, setSyncing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [loginError, setLoginError] = useState('');
@@ -37,9 +51,9 @@ export default function App() {
 
   useEffect(() => { (async () => {
     try {
-      const [s, q, h, o, l, th] = await Promise.all(['c360_session', 'c360_queue', 'c360_history', 'c360_orders', 'c360_lang', 'c360_theme'].map((k) => AsyncStorage.getItem(k)));
+      const [s, q, h, b, l, th] = await Promise.all(['c360_session', 'c360_queue', 'c360_history', 'c360_boot', 'c360_lang', 'c360_theme'].map((k) => AsyncStorage.getItem(k)));
       if (s) { const p = JSON.parse(s); setToken(p.token); setSession(p); }
-      if (q) setQueue(JSON.parse(q)); if (h) setHistory(JSON.parse(h)); if (o) setOrders(JSON.parse(o));
+      if (q) setQueue(JSON.parse(q).map(migrate)); if (h) setHistory(JSON.parse(h)); if (b) setBoot({ ...EMPTY_BOOT, ...JSON.parse(b) });
       setLangState(l || (Intl.DateTimeFormat().resolvedOptions().locale.startsWith('fr') ? 'fr' : 'en'));
       if (th) setThemePref(th);
     } catch {}
@@ -55,53 +69,52 @@ export default function App() {
     setBusy(true); setLoginError('');
     try {
       const { token, user } = await api.login(email, password);
-      if (user.role !== 'foreman') { setLoginError('hq'); setBusy(false); return; }
+      if (!isFieldUser(user)) { setLoginError('hq'); setBusy(false); return; }
       setToken(token); const s = { token, user }; setSession(s); save('c360_session', s);
     } catch (e) { setLoginError(e.network ? 'network' : e.message); }
     setBusy(false);
   };
 
-  const loadOrders = useCallback(async () => {
-    try { const o = await api.orders(); setOrders(o); save('c360_orders', o); } catch (e) { if (e.status === 401) logout(); }
+  // Orders, tasks, stock list and workforce categories are cached so every form works offline.
+  const loadBoot = useCallback(async () => {
+    try { const b = await api.bootstrap(); setBoot(b); save('c360_boot', b); } catch (e) { if (e.status === 401) logout(); }
   }, [logout]);
-  useEffect(() => { if (session && online) loadOrders(); }, [session, online, loadOrders]);
+  useEffect(() => { if (session && online) loadBoot(); }, [session, online, loadBoot]);
 
-  // Uploads photos, then sends everything that is waiting. Safe to retry: every record has a clientId.
+  // Uploads photos first, then sends everything waiting. Safe to retry: every record has a clientId.
   const syncNow = useCallback(async () => {
     if (syncingRef.current || !online || !session || queueRef.current.length === 0) return;
     syncingRef.current = true; setSyncing(true);
     try {
       const work = [];
       for (const item of queueRef.current.filter((q) => !q.error)) {
-        let it = item;
-        if (it.photoUri && !it.photoUrl) {
-          const { url } = await api.upload(it.photoUri);
-          it = { ...it, photoUrl: url };
-          setQueue((p) => p.map((x) => (x.clientId === it.clientId ? it : x)));
+        const it = { ...item, photoUrls: [...(item.photoUrls || [])] };
+        for (let i = 0; i < (it.photos || []).length; i++) {
+          if (!it.photoUrls[i]) { const { url } = await api.upload(it.photos[i]); it.photoUrls[i] = url; }
         }
+        setQueue((p) => p.map((x) => (x.clientId === it.clientId ? it : x)));
         work.push(it);
       }
       if (work.length) {
-        const res = await api.sync({
-          materialLogs: work.filter((w) => w.type === 'delivery').map((w) => ({ clientId: w.clientId, orderId: w.orderId, quantityReceived: w.quantityReceived, deliveryNotePhotoUrl: w.photoUrl, createdAt: w.createdAt })),
-          attendanceLogs: work.filter((w) => w.type === 'attendance').map((w) => ({ clientId: w.clientId, totalWorkersPresent: w.totalWorkersPresent, siteGroupPhotoUrl: w.photoUrl, createdAt: w.createdAt })),
-        });
-        const results = Object.fromEntries([...res.materialLogs, ...res.attendanceLogs].map((r) => [r.clientId, r]));
+        const body = { materialLogs: [], attendanceLogs: [], reports: [], photos: [] };
+        work.forEach((w) => { const [key, payload] = toPayload(w); body[key].push(payload); });
+        const res = await api.sync(body);
+        const results = Object.fromEntries(Object.values(res).flat().map((r) => [r.clientId, r]));
         const sent = [], failed = {};
         work.forEach((w) => {
           const r = results[w.clientId];
           if (r && (r.result === 'created' || r.result === 'duplicate')) sent.push({ ...w, flagged: r.flagged ?? w.flagged, syncedAt: new Date().toISOString() });
           else if (r) failed[w.clientId] = r.error || 'error';
         });
-        setHistory((h) => [...sent, ...h].slice(0, 50));
+        setHistory((h) => [...sent.map(({ photos, photoUrls, payload, ...rest }) => rest), ...h].slice(0, 50)); // history keeps the summary only
         setQueue((p) => p.filter((x) => !sent.some((s) => s.clientId === x.clientId)).map((x) => (failed[x.clientId] ? { ...x, error: failed[x.clientId] } : x)));
-        if (sent.length) loadOrders();
+        if (sent.length) loadBoot();
       }
     } catch (e) {
       if (e.status === 401) { Alert.alert('Session expired'); logout(); } // otherwise: network trouble, records stay queued and retry
     }
     syncingRef.current = false; setSyncing(false);
-  }, [online, session, loadOrders, logout]);
+  }, [online, session, loadBoot, logout]);
 
   const pendingCount = queue.filter((q) => !q.error).length;
   useEffect(() => { if (online && pendingCount > 0) syncNow(); }, [online, pendingCount, syncNow]);
@@ -112,7 +125,7 @@ export default function App() {
     setScreen('home');
     Alert.alert(t('saved.title'), online ? t('saved.online') : t('saved.offline'));
   };
-  const availableOrders = orders.filter((o) => !queue.some((q) => q.orderId === o._id));
+  const availableOrders = boot.orders.filter((o) => !queue.some((q) => q.orderId === o._id));
 
   if (!ready) return <View style={{ flex: 1, backgroundColor: '#0F1E38' }} />;
   const back = () => setScreen('home');
@@ -122,8 +135,10 @@ export default function App() {
       {!session ? <Login onLogin={doLogin} busy={busy} error={loginError} /> : (
         <View style={{ flex: 1 }}>
           {screen === 'home' && <Home user={session.user} online={online} forceOffline={forceOffline} setForceOffline={setForceOffline} pending={pendingCount} syncing={syncing} history={history} go={setScreen} onLogout={logout} />}
-          {screen === 'attendance' && <Attendance user={session.user} back={back} save={saveRecord} />}
+          {screen === 'attendance' && <Attendance boot={boot} user={session.user} back={back} save={saveRecord} />}
           {screen === 'delivery' && <Delivery orders={availableOrders} back={back} save={saveRecord} />}
+          {screen === 'report' && <Report boot={boot} back={back} save={saveRecord} />}
+          {screen === 'photo' && <PhotoScreen boot={boot} back={back} save={saveRecord} />}
           {screen === 'sync' && <Sync back={back} queue={queue} history={history} online={online} syncing={syncing} syncNow={syncNow} remove={(id) => setQueue((p) => p.filter((x) => x.clientId !== id))} />}
         </View>
       )}
