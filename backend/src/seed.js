@@ -124,7 +124,7 @@ const svg = (title, sub, a, b) => 'data:image/svg+xml;utf8,' + encodeURIComponen
   const bd = (o) => Object.entries(o).map(([category, count]) => ({ category, count }));
   const att = (site, u, n, date, status, breakdown) => createAttendance({ tenantId, userId: u._id, siteId: site._id, createdAt: d(date), data: { totalWorkersPresent: n, breakdown, status, date: d(date) } });
   await att(maison, fon, 35, '2026-09-30', 'Pending_HQ_Approval', bd(crew));
-  await att(maison, fon, 45, '2026-09-29', 'Pending_HQ_Approval', bd({ ...crew, Manœuvres: 16, 'Techniciens coffreurs': 19 }));
+  await att(maison, fon, 45, '2026-09-29', 'Pending_HQ_Approval', bd({ ...crew, Manœuvres: 14, 'Techniciens coffreurs': 19 }));
   await att(maison, fon, 34, '2026-09-28', 'Approved', bd({ ...crew, Manœuvres: 7 }));
   await att(bonanjo, nkeng, 131, '2026-09-30', 'Pending_HQ_Approval'); await att(kribi, carine, 36, '2026-09-30', 'Pending_HQ_Approval');
   await att(bonanjo, nkeng, 109, '2026-09-29', 'Approved'); await att(bastos, nkeng, 45, '2026-09-29', 'Approved');
