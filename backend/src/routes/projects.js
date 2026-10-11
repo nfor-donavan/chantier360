@@ -9,7 +9,8 @@ const { createPhoto } = require('../services/records');
 
 const BASIC = ['siteName', 'locationCity', 'description', 'currentPhase', 'startDate', 'endDate', 'status', 'plannedWorkers', 'client'];
 const FIN = ['budgetXAF', 'spentXAF'];
-const TASK = ['name', 'category', 'phase', 'subcontractor', 'unit', 'totalQty', 'cumulativeQty', 'weeklyQty', 'weight', 'weeklyTargetPct', 'delayReason', 'observation', 'clientVisible'];
+const TASK = ['name', 'category', 'phase', 'subcontractor', 'unit', 'totalQty', 'cumulativeQty', 'weeklyQty', 'weight', 'weeklyTargetPct', 'reportedPct', 'delayReason', 'observation', 'clientVisible'];
+const PORTAL = ['progress', 'timeline', 'photos', 'videos', 'reports', 'statistics'];
 const MILE = ['name', 'plannedDate', 'status', 'order', 'clientVisible'];
 const pick = (b, keys) => Object.fromEntries(keys.filter((k) => b[k] !== undefined).map((k) => [k, b[k] === '' ? null : b[k]]));
 const view = can('VIEW_PROGRESS', 'VIEW_DASHBOARD');
@@ -41,11 +42,18 @@ router.get('/:id', view, wrap(async (req, res) => {
   });
 }));
 
-router.patch('/:id', can('MANAGE_PROJECTS', 'MANAGE_PROJECT_FINANCIALS'), wrap(async (req, res) => {
+router.patch('/:id', can('MANAGE_PROJECTS', 'MANAGE_PROJECT_FINANCIALS', 'MANAGE_CLIENT_PORTAL'), wrap(async (req, res) => {
   const { id } = req.params; assertProject(req, id);
   const set = req.has('MANAGE_PROJECTS') ? pick(req.body, BASIC) : {};
+  if (req.body.portal) {
+    if (!req.has('MANAGE_CLIENT_PORTAL')) throw httpError(403, 'Only the Director controls what the client sees');
+    PORTAL.forEach((k) => { if (typeof req.body.portal[k] === 'boolean') set[`portal.${k}`] = req.body.portal[k]; });
+  }
+  if (!req.has('MANAGE_PROJECTS') && Object.keys(pick(req.body, BASIC)).length) throw httpError(403, 'You do not have permission to change project records');
   if (FIN.some((k) => req.body[k] !== undefined)) {
     if (!req.has('MANAGE_PROJECT_FINANCIALS')) throw httpError(403, 'You do not have permission to change financial data');
+    const cur = await ProjectSite.findOne({ _id: id, tenantId: req.user.tenantId }).select('spentSource');
+    if (req.body.spentXAF !== undefined && cur?.spentSource === 'expenses') throw httpError(409, 'Spent is calculated from the expense records. Add or correct an expense instead.');
     Object.assign(set, pick(req.body, FIN), { financialsUpdatedBy: req.user.id, financialsUpdatedAt: new Date() });
   }
   const p = await ProjectSite.findOneAndUpdate({ _id: id, tenantId: req.user.tenantId }, set, { new: true, runValidators: true });
@@ -62,7 +70,9 @@ router.post('/:id/tasks', can('MANAGE_TASKS'), wrap(async (req, res) => {
 }));
 router.patch('/:id/tasks/:tid', can('MANAGE_TASKS', 'MANAGE_CLIENT_PORTAL'), wrap(async (req, res) => {
   const { id, tid } = req.params; assertProject(req, id);
-  const task = await Task.findOneAndUpdate({ _id: tid, tenantId: req.user.tenantId, siteId: id }, pick(req.body, req.has('MANAGE_TASKS') ? TASK : ['clientVisible']), { new: true, runValidators: true });
+  const set = pick(req.body, req.has('MANAGE_TASKS') ? TASK : ['clientVisible']);
+  if ('reportedPct' in set) { if (set.reportedPct !== null && !(Number(set.reportedPct) >= 0 && Number(set.reportedPct) <= 100)) throw httpError(400, 'A percentage must be between 0 and 100'); Object.assign(set, { reportedBy: req.user.id, reportedAt: new Date() }); }
+  const task = await Task.findOneAndUpdate({ _id: tid, tenantId: req.user.tenantId, siteId: id }, set, { new: true, runValidators: true });
   if (!task) throw httpError(404, 'Task not found');
   await recomputeProgress(req.user.tenantId, id);
   res.json(withPct(task));

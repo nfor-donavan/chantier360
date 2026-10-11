@@ -29,12 +29,14 @@ export function StoreProvider({ children }) {
     if (!web) throw Object.assign(new Error('nohq'), { status: 403 });
     setToken(token); persist(u);
   };
+  // Called after the company name or logo is changed, so every screen shows it straight away.
+  const setTenant = (tenant) => setUser((u) => { const n = { ...u, tenant: { ...u.tenant, ...tenant } }; localStorage.setItem('c360_user', JSON.stringify(n)); return n; });
   const notify = (msg) => { setToast(msg); setTimeout(() => setToast(null), 2600); };
   const t = useMemo(() => makeT(lang), [lang]);
   const can = (p) => !!user?.permissions?.includes(p);
 
   return (
-    <Ctx.Provider value={{ user, login, logout, can, lang, setLang, theme, setTheme, t, toast, notify, tick, bump: () => setTick((x) => x + 1) }}>
+    <Ctx.Provider value={{ user, setTenant, login, logout, can, lang, setLang, theme, setTheme, t, toast, notify, tick, bump: () => setTick((x) => x + 1) }}>
       {children}
     </Ctx.Provider>
   );

@@ -12,41 +12,41 @@ cd web && npm install && npm run dev
 Set `VITE_API_URL` (see `web/.env.example`) to point at your backend.
 
 ## Demo accounts (password for all: `demo1234`)
-| Where | Email | Role | What they see |
+The demo company is **Group LAN BTP** (name and logo are editable under *Company settings*, so every company brands its own workspace).
+
+| Where | Email | Role | What they can do |
 |---|---|---|---|
-| Web | ceo@mac-construction.cm | General Director | Everything: all projects, finances, roles and access, client portal controls |
-| Web | engineer@mac-construction.cm | Engineer | Only assigned projects, no finances, no user management |
-| Web | client@ordre-avocats.cm | Client | Client portal only: approved progress, timeline, photos |
+| Web | ceo@mac-construction.cm | General Director | Everything, including roles, client releases and company settings |
+| Web | engineer@mac-construction.cm | Engineer | Views assigned projects, reports, deliveries, workforce, media. Creates and locks weekly reports. Cannot create or edit projects, tasks or finances |
+| Web | secretary@mac-construction.cm | Secretary | Budgets and expenses (view, add, edit), reports, project information. Cannot delete expenses, edit budgets, manage users or the client portal |
+| Web | client@ordre-avocats.cm | Client | Client portal: only what the Director released |
 | Mobile | foreman@mac-construction.cm | Site Foreman | Maison des Avocats |
 | Mobile | carine@mac-construction.cm | Site Foreman | Kribi Port Warehouse |
-| Isolation check | director@rival-btp.cm | Other company | Sees nothing of MAC's data |
+| Isolation check | director@rival-btp.cm | Other company | Sees nothing of the demo company's data |
 
-## Backend
+## Updating an existing database
 ```
-cd backend && npm install
-npm run seed   # wipes and reloads the demo data (required after this update)
-npm run dev
+cd backend
+npm run migrate   # keeps your data: adds the Secretary role and new permissions, converts old report photos, rebuilds indexes
+npm run seed      # alternative: wipes everything and reloads the demo data
+npm run verify    # checks that dashboards agree with the saved records
 ```
-`.env` needs `MONGO_URI`, `JWT_SECRET`, `CLIENT_ORIGINS` (web URL) and optionally the three `CLOUDINARY_*` values for permanent photo storage.
+The client portal is now deny-by-default. After migrating, existing projects show clients nothing until the Director releases it (Project > Client portal).
 
-## Foreman app
-```
-cd mobile && npm install && npx expo install --check
-eas build -p android --profile preview
-```
-Set `EXPO_PUBLIC_API_URL` in `mobile/eas.json` to your backend URL.
+## What V3 adds
+- **Workforce register (foreman app):** register and remove workers, pick who is present. Removing a worker marks them inactive. Past attendance keeps the name it was recorded with. Duplicate names and double attendance on one day are refused. Works offline.
+- **Manual task percentages:** the foreman can enter a task's percentage in the daily report (0 to 100). It is saved as entered, shown next to the quantity-based figure, and used in project progress until cleared. The Director can also set or clear it in the Tasks tab.
+- **Deliveries (foreman app):** record, edit and delete, with the delivering company or store, unit, date and notes. Editing or deleting corrects stock, alerts and the purchase order in one step, and is refused if the stock has already been used. Deliveries without an order are allowed. Works offline.
+- **Engineer limits:** enforced on the server. No project creation or editing, no task editing.
+- **Reports:** one Reports area with Daily and Weekly. Tables, filters (project, dates), a detail view, and print layouts with the company name, logo and period. Weekly reports are built from the live tasks and the week's daily reports, can be edited while a draft, then locked.
+- **Secretary role and expenses:** an expense register per project with categories, receipts and totals. Project "spent" becomes the sum of the expenses.
+- **Photos and videos on daily reports:** upload with progress, type and size checks, retry. Photos up to 8 MB, videos up to 60 MB.
+- **Client release controls:** per project switches for progress, timeline, photos, videos, reports and statistics, plus per item release of tasks, milestones, photos, videos and reports. Enforced on the server.
+- **Live figures:** dashboards and tables refresh every 30 seconds and when you return to the tab.
+- **Company settings:** the Director edits the company name and logo, shown in the header, on printed reports, in the client portal and on the foreman app.
 
-## What V2 adds
-- **Permissions:** User, Role, Permissions. Roles are stored per company and editable on the "Roles & access" page. Every API route checks a named permission, so hiding a menu item is never the only protection. Financial fields are removed from responses for anyone without the financial permission.
-- **Attendance without wages:** attendance records headcount by configurable workforce category. Pay is a separate concern and is not stored.
-- **No hard-coded business data:** budgets, spending, dates, phases, clients and progress live in the database. Budget and spending are entered in Project > Settings and show who entered them and when.
-- **Clickable projects:** overview, quantity-based tasks (subcontractor, unit, total, cumulative, weekly, target, observation), timeline, photo gallery, stock, daily reports, settings. "Print status report" produces the weekly state of the site.
-- **Progress is calculated:** each task's percentage is cumulative divided by total, and project progress is the weighted average of its tasks, grouped by trade.
-- **Client portal:** a separate login that returns an explicit whitelist: progress, timeline, tasks and photos marked "visible to client", and published updates. No budgets, wages, subcontractors, reports or stock.
-- **Daily report (mobile, offline):** work done with quantities, workforce by category, equipment used, stock entries and exits, difficulties and solutions, tomorrow's programme, orders, site cash, photos. Submitting it updates task progress and stock.
-- **Stock:** opening + entries - exits = closing, per item. Deliveries add stock automatically.
-- **Dashboards by role:** each user only gets the sections their permissions allow.
-- **English and French, light and dark mode** on web and mobile.
+## Media storage
+Without Cloudinary credentials, photos and videos are kept on the server disk, which Render wipes on every deploy, and they are served through expiring signed links. For real use set `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY` and `CLOUDINARY_API_SECRET` on the backend. Cloudinary files are stored permanently, and their links are long unguessable URLs that are only ever sent to authorised users, but they are not time-limited.
 
 ## API reference (backend/)
 Node.js + Express + Mongoose on MongoDB Atlas. One shared database, every record carries a `tenantId`, and a Mongoose plugin refuses any query that does not filter by it.

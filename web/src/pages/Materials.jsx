@@ -10,7 +10,7 @@ export default function Materials() {
   const { t, lang, notify, bump, can } = useStore();
   const [tab, setTab] = useState('deliveries');
   const [onlyFlagged, setOnlyFlagged] = useState(false);
-  const logs = useApi(api.logs), reqs = useApi(api.requests);
+  const logs = useApi(api.logs, { every: 30000 }), reqs = useApi(api.requests, { every: 30000 });
   const decide = async (id, status) => { try { await api.decideRequest(id, status); notify(t(status)); reqs.reload(); bump(); } catch (e) { notify(e.message); } };
   return (
     <Gate states={[logs, reqs]}>{() => {
@@ -24,11 +24,11 @@ export default function Materials() {
           </div>
           {tab === 'deliveries' ? (
             <table>
-              <thead><tr><th>{t('col.date')}</th><th>{t('col.material')}</th><th>{t('col.site')}</th><th>{t('col.supplier')}</th><th className="r">{t('col.ordered')}</th><th className="r">{t('col.received')}</th><th>{t('col.check')}</th><th>{t('col.by')}</th></tr></thead>
+              <thead><tr><th>{t('col.deliveryDate')}</th><th>{t('col.material')}</th><th>{t('col.site')}</th><th>{t('col.supplier')}</th><th>{t('col.unit')}</th><th className="r">{t('col.ordered')}</th><th className="r">{t('col.received')}</th><th>{t('col.check')}</th><th>{t('col.by')}</th></tr></thead>
               <tbody>
                 {logs.data.filter((l) => !onlyFlagged || l.flagged).map((l) => { const p = pct(l.quantityOrdered, l.quantityReceived); return (
                   <tr key={l._id} className={p > 0 ? 'flag' : ''}>
-                    <td>{fmtDate(l.createdAt, lang)}</td><td>{l.materialType}</td><td>{l.siteId?.siteName}</td><td>{l.supplierName}</td>
+                    <td>{fmtDate(l.deliveryDate || l.createdAt, lang)}</td><td>{l.materialType}{l.notes && <div className="muted small">{l.notes}</div>}</td><td>{l.siteId?.siteName}</td><td>{l.supplierName}</td><td>{l.unit}</td>
                     <td className="r">{l.quantityOrdered}</td><td className="r">{l.quantityReceived}</td>
                     <td>{p > 0 ? <span className="tag bad">{l.shortfall} {t('short')} ({p.toFixed(1)}%)</span> : <span className="tag ok">{t('matches')}</span>}</td>
                     <td>{l.loggedBy?.name}</td>

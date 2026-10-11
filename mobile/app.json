@@ -18,8 +18,7 @@
         "backgroundColor": "#0F1E38"
       },
       "permissions": [
-        "android.permission.CAMERA",
-        "android.permission.RECORD_AUDIO"
+        "CAMERA"
       ]
     },
     "plugins": [
@@ -37,11 +36,6 @@
           }
         }
       ]
-    ],
-    "extra": {
-      "eas": {
-        "projectId": "57cfdaba-b37a-496d-8af0-c3d43e0d711e"
-      }
-    }
+    ]
   }
 }

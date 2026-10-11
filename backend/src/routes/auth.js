@@ -18,7 +18,7 @@ async function describe(user) {
   const first = projects[0];
   return {
     id: user._id, name: user.name, email: user.email, role: user.role, roleLabel: role?.label || user.role, title: user.title, permissions,
-    tenant: tenant && { id: tenant._id, companyName: tenant.companyName },
+    tenant: tenant && { id: tenant._id, companyName: tenant.companyName, logoUrl: tenant.logo || null },
     projects: projects.map((p) => ({ id: p._id, siteName: p.siteName, locationCity: p.locationCity })),
     site: first && { id: first._id, siteName: first.siteName, locationCity: first.locationCity, plannedWorkers: first.plannedWorkers }, // used by the foreman app
   };

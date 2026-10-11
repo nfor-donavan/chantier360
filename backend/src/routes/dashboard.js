@@ -1,6 +1,6 @@
 const router = require('express').Router();
 const mongoose = require('mongoose');
-const { ProjectSite, Alert, AttendanceLog, MaterialRequest, MaterialLog, DailyReport, ProjectPhoto } = require('../models');
+const { ProjectSite, Alert, AttendanceLog, MaterialRequest, MaterialLog, DailyReport, WeeklyReport, ProjectPhoto, Expense } = require('../models');
 const { can, scoped } = require('../middleware/auth');
 const { wrap } = require('../utils/http');
 const own = require('../utils/populate');
@@ -47,7 +47,18 @@ router.get('/', can('VIEW_DASHBOARD'), wrap(async (req, res) => {
     const latest = {}; logs.forEach((l) => { latest[String(l.siteId)] ||= l; });
     out.workforce = { latestTotal: Object.values(latest).reduce((a, l) => a + l.totalWorkersPresent, 0), sitesReporting: Object.keys(latest).length };
   }
-  if (req.has('VIEW_REPORTS')) out.recentReports = await DailyReport.find({ tenantId: t, ...sc }).sort({ date: -1 }).limit(4).populate(own(req, 'submittedBy')).populate(own(req, 'siteId', 'siteName')).select('date siteId submittedBy difficulties').lean();
+  if (req.has('VIEW_REPORTS')) {
+    const [daily, weekly] = await Promise.all([
+      DailyReport.find({ tenantId: t, ...sc }).sort({ date: -1 }).limit(6).populate(own(req, 'submittedBy')).populate(own(req, 'siteId', 'siteName')).lean(),
+      WeeklyReport.find({ tenantId: t, ...sc }).sort({ weekStart: -1 }).limit(4).populate(own(req, 'siteId', 'siteName')).lean(),
+    ]);
+    out.recentReports = daily.map((r) => ({ _id: r._id, date: r.date, siteId: r.siteId, submittedBy: r.submittedBy, tasks: (r.workPerformed || []).length, workforce: (r.workforce || []).reduce((a, w) => a + w.count, 0), difficulties: (r.difficulties || []).length, media: (r.media || []).length }));
+    out.recentWeekly = weekly.map((w) => ({ _id: w._id, weekStart: w.weekStart, weekEnd: w.weekEnd, siteId: w.siteId, status: w.status, tasks: w.rows.length, avgProgress: w.rows.length ? Math.round((w.rows.reduce((a, r) => a + (r.progressPct || 0), 0) / w.rows.length) * 10) / 10 : 0 }));
+  }
+  if (req.has('VIEW_EXPENSES')) {
+    const rows = await Expense.find({ tenantId: t, ...sc, date: { $gte: new Date(Date.now() - 30 * 864e5) } }).select('amountXAF').lean();
+    out.expenses = { last30Days: rows.reduce((a, e) => a + e.amountXAF, 0), count: rows.length };
+  }
   if (req.has('VIEW_PROGRESS')) out.recentPhotos = (await ProjectPhoto.find({ tenantId: t, ...sc }).sort({ takenAt: -1 }).limit(6).lean()).map((p) => ({ ...p, siteName: siteName[String(p.siteId)] }));
   res.json(out);
 }));

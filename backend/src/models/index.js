@@ -7,6 +7,7 @@ const partialUnique = (schema) => schema.index({ tenantId: 1, clientId: 1 }, { u
 
 const Tenant = mongoose.model('Tenant', new Schema({
   companyName: { type: String, required: true }, officeAddress: String, isActive: { type: Boolean, default: true },
+  logo: String, // small image stored as a data URL, so it survives redeploys without file storage
 }, { timestamps: true }));
 
 const roleSchema = new Schema({ key: { type: String, required: true }, label: String, permissions: [String] }, { timestamps: true });
@@ -36,6 +37,8 @@ const siteSchema = new Schema({
   currentPhase: String,
   budgetXAF: { type: Number, min: 0 },
   spentXAF: { type: Number, default: 0, min: 0 },
+  spentSource: { type: String, enum: ['manual', 'expenses'], default: 'manual' }, // becomes 'expenses' once expense records exist
+  portal: { progress: { type: Boolean, default: false }, timeline: { type: Boolean, default: false }, photos: { type: Boolean, default: false }, videos: { type: Boolean, default: false }, reports: { type: Boolean, default: false }, statistics: { type: Boolean, default: false } }, // what this project's client may see: everything is off until the Director releases it
   financialsUpdatedBy: ref('User'),
   financialsUpdatedAt: Date,
   progressPct: { type: Number, default: 0, min: 0, max: 100 }, // recalculated from tasks whenever they change
@@ -51,7 +54,7 @@ const Task = scoped('Task', new Schema({
   name: { type: String, required: true }, category: { type: String, default: 'General' }, phase: String, subcontractor: String, unit: { type: String, default: 'u' },
   totalQty: { type: Number, required: true, min: 0 }, cumulativeQty: { type: Number, default: 0, min: 0 },
   weeklyQty: { type: Number, default: 0, min: 0 }, weekKey: String,
-  weight: { type: Number, default: 1, min: 0 }, weeklyTargetPct: Number, delayReason: String, observation: String, clientVisible: { type: Boolean, default: true },
+  weight: { type: Number, default: 1, min: 0 }, weeklyTargetPct: Number, reportedPct: { type: Number, min: 0, max: 100, default: null }, reportedBy: ref('User'), reportedAt: Date, delayReason: String, observation: String, clientVisible: { type: Boolean, default: true },
 }, { timestamps: true }));
 
 const Milestone = scoped('Milestone', new Schema({
@@ -86,7 +89,7 @@ const materialSchema = new Schema({
   materialType: { type: String, required: true },
   quantityOrdered: { type: Number, required: true, min: 0 }, quantityReceived: { type: Number, required: true, min: 0 },
   shortfall: { type: Number, default: 0 }, flagged: { type: Boolean, default: false },
-  supplierName: String, deliveryNotePhotoUrl: String, loggedBy: ref('User'),
+  supplierName: String, unit: String, deliveryDate: { type: Date, default: Date.now }, notes: String, deliveryNotePhotoUrl: String, loggedBy: ref('User'),
 }, { timestamps: true });
 partialUnique(materialSchema);
 materialSchema.index({ tenantId: 1, siteId: 1, createdAt: -1 });
@@ -103,6 +106,7 @@ const attendanceSchema = new Schema({
   siteId: { ...ref('ProjectSite'), required: true, index: true }, clientId: String, date: { type: Date, default: Date.now },
   totalWorkersPresent: { type: Number, required: true, min: 0 }, expectedWorkers: { type: Number, default: 0 },
   breakdown: [new Schema({ category: String, count: { type: Number, min: 0 } }, { _id: false })],
+  workers: [new Schema({ uid: String, name: String, category: String }, { _id: false })], // names are copied in, so history survives a worker being removed
   siteGroupPhotoUrl: String, flagged: { type: Boolean, default: false },
   status: { type: String, enum: ['Pending_HQ_Approval', 'Approved', 'Rejected'], default: 'Pending_HQ_Approval' },
   loggedBy: ref('User'), decidedBy: ref('User'), decidedAt: Date,
@@ -116,15 +120,49 @@ const reportSchema = new Schema({
   submittedBy: ref('User'), objectives: String, tomorrowPlan: String, observations: String, ordersNote: String,
   siteCash: { opening: Number, expenses: Number },
   stockMovements: [new Schema({ materialType: String, kind: { type: String, enum: ['in', 'out'] }, quantity: Number, party: String }, { _id: false })],
-  workPerformed: [new Schema({ taskId: ref('Task'), taskName: String, quantity: Number, unit: String, note: String }, { _id: false })],
+  workPerformed: [new Schema({ taskId: ref('Task'), taskName: String, quantity: Number, unit: String, progressPct: Number, note: String }, { _id: false })],
   materialsUsed: [new Schema({ materialType: String, quantity: Number }, { _id: false })],
   workforce: [new Schema({ category: String, count: Number }, { _id: false })],
   difficulties: [new Schema({ issue: String, solution: String }, { _id: false })],
-  photoUrls: [String],
+  media: [new Schema({ url: { type: String, required: true }, kind: { type: String, enum: ['photo', 'video'], default: 'photo' }, mime: String, size: Number, caption: String, uploadedBy: ref('User'), uploadedAt: { type: Date, default: Date.now }, clientVisible: { type: Boolean, default: false } })],
+  clientVisible: { type: Boolean, default: false }, // the Director decides whether the client sees this report
 }, { timestamps: true });
 partialUnique(reportSchema);
 reportSchema.index({ tenantId: 1, siteId: 1, date: -1 });
 const DailyReport = scoped('DailyReport', reportSchema);
+
+const Worker = scoped('Worker', (() => {
+  const w = new Schema({
+    uid: { type: String, required: true }, siteId: { ...ref('ProjectSite'), required: true, index: true },
+    name: { type: String, required: true, trim: true }, nameKey: { type: String, required: true }, category: { type: String, required: true }, phone: String,
+    active: { type: Boolean, default: true }, removedAt: Date, removedBy: ref('User'), createdBy: ref('User'),
+  }, { timestamps: true });
+  w.index({ tenantId: 1, uid: 1 }, { unique: true });
+  w.index({ tenantId: 1, siteId: 1, nameKey: 1 }, { unique: true, partialFilterExpression: { active: true } }); // no two active workers with the same name on a project
+  return w;
+})());
+
+const weeklySchema = new Schema({
+  siteId: { ...ref('ProjectSite'), required: true, index: true }, weekStart: { type: Date, required: true }, weekEnd: { type: Date, required: true },
+  status: { type: String, enum: ['draft', 'locked'], default: 'draft' },
+  rows: [new Schema({ taskId: ref('Task'), subcontractor: String, phase: String, category: String, name: String, unit: String, totalQty: Number, cumulativeQty: Number, weeklyQty: Number,
+    progressPct: Number, calculatedPct: Number, reportedPct: Number, plannedPct: Number, delayReason: String, observation: String }, { _id: false })],
+  summary: Schema.Types.Mixed, objectives: String, notes: String,
+  createdBy: ref('User'), lockedBy: ref('User'), lockedAt: Date, clientVisible: { type: Boolean, default: false },
+}, { timestamps: true });
+weeklySchema.index({ tenantId: 1, siteId: 1, weekStart: 1 }, { unique: true });
+const WeeklyReport = scoped('WeeklyReport', weeklySchema);
+
+const Expense = scoped('Expense', new Schema({
+  siteId: { ...ref('ProjectSite'), required: true, index: true }, date: { type: Date, default: Date.now },
+  category: { type: String, required: true }, description: { type: String, required: true }, amountXAF: { type: Number, required: true, min: 0 },
+  payee: String, reference: String, receiptUrl: String, enteredBy: ref('User'), updatedBy: ref('User'),
+}, { timestamps: true }));
+
+// Record of corrections and deletions, so removing a record never leaves an unexplained gap.
+const AuditLog = scoped('AuditLog', new Schema({
+  entity: String, entityId: String, action: String, siteId: ref('ProjectSite'), by: ref('User'), snapshot: Schema.Types.Mixed, at: { type: Date, default: Date.now },
+}));
 
 const requestSchema = new Schema({
   siteId: { ...ref('ProjectSite'), required: true }, materialType: { type: String, required: true }, quantity: { type: Number, required: true, min: 1 },
@@ -142,4 +180,4 @@ alertSchema.index({ tenantId: 1, kind: 1, refId: 1 }, { unique: true });
 alertSchema.index({ tenantId: 1, acknowledged: 1, createdAt: -1 });
 const Alert = scoped('Alert', alertSchema);
 
-module.exports = { Tenant, Role, User, Client, ProjectSite, Task, Milestone, ProjectPhoto, ClientUpdate, WorkforceCategory, StockEntry, PurchaseOrder, MaterialLog, AttendanceLog, DailyReport, MaterialRequest, Alert };
+module.exports = { Worker, WeeklyReport, Expense, AuditLog, Tenant, Role, User, Client, ProjectSite, Task, Milestone, ProjectPhoto, ClientUpdate, WorkforceCategory, StockEntry, PurchaseOrder, MaterialLog, AttendanceLog, DailyReport, MaterialRequest, Alert };

@@ -6,10 +6,12 @@ import { api } from '../api.js';
 import { useApi } from '../hooks.js';
 import Gate from '../components/Gate.jsx';
 import { fmtDate, fmtXAF, pct } from '../utils.js';
+import { useNavigate } from 'react-router-dom';
 
 export default function Dashboard() {
   const { t, lang, theme } = useStore();
-  const dash = useApi(api.dashboard);
+  const dash = useApi(api.dashboard, { every: 30000 });
+  const nav = useNavigate();
   const c = theme === 'dark'
     ? { grid: '#243656', budget: '#3F5681', mute: '#93A3C0', card: '#121F38', ink: '#E8EEF9', prog: '#4C7BD9' }
     : { grid: '#E3E7EC', budget: '#C9D2DE', mute: '#66728A', card: '#FFFFFF', ink: '#14213A', prog: '#0F1E38' };
@@ -30,6 +32,7 @@ export default function Dashboard() {
             {d.alerts && <div className={'kpi ' + (d.alerts.open ? 'warn' : '')}><span>{t('kpi.alerts')}</span><b>{d.alerts.open}</b><small>{d.alerts.high} {t('kpi.high')}</small></div>}
             {(d.pending.attendance > 0 || d.pending.requests > 0 || pending === 0) && <div className="kpi"><span>{t('kpi.pending')}</span><b>{pending}</b><small>{t('kpi.pending.sub')}</small></div>}
             {d.workforce && <div className="kpi"><span>{t('kpi.workers')}</span><b>{d.workforce.latestTotal}</b><small>{t('kpi.workers.sub')}</small></div>}
+            {d.expenses && <div className="kpi"><span>{t('ex.last30')}</span><b>{fmtXAF(d.expenses.last30Days)}</b><small>{d.expenses.count}</small></div>}
             {d.deliveries && <div className={'kpi ' + (d.deliveries.flaggedThisWeek ? 'warn' : '')}><span>{t('kpi.flagged')}</span><b>{d.deliveries.flaggedThisWeek}</b><small>{t('kpi.flagged.sub')} {d.deliveries.thisWeek}</small></div>}
           </div>
 
@@ -107,21 +110,32 @@ export default function Dashboard() {
             </section>
           )}
 
-          <div className="grid2">
-            {d.recentReports && (
-              <section className="panel">
-                <h3>{t('dash.reports')} <Link to="/reports">{t('viewall')}</Link></h3>
-                {d.recentReports.length === 0 && <p className="muted">{t('rp.none')}</p>}
-                {d.recentReports.map((r) => <Link key={r._id} to={`/projects/${r.siteId?._id}`} className="row-link"><b>{r.siteId?.siteName}</b><span className="muted">{fmtDate(r.date, lang)} · {r.submittedBy?.name}</span></Link>)}
-              </section>
-            )}
-            {d.recentPhotos && (
-              <section className="panel">
-                <h3>{t('dash.photos')}</h3>
-                {d.recentPhotos.length === 0 ? <p className="muted">{t('ph.empty')}</p> : <div className="photo-row">{d.recentPhotos.map((p) => <Link key={p._id} to={`/projects/${p.siteId}`} title={p.siteName}><img src={p.url} alt={p.caption || ''} /></Link>)}</div>}
-              </section>
-            )}
-          </div>
+          {d.recentReports && (
+            <section className="panel">
+              <h3>{t('dash.tblDaily')} <Link to="/reports">{t('viewall')}</Link></h3>
+              {d.recentReports.length === 0 ? <p className="muted">{t('rp.none')}</p> : (
+                <table className="selectable">
+                  <thead><tr><th>{t('col.date')}</th><th>{t('col.site')}</th><th>{t('rp.by')}</th><th className="r">{t('rt.tasks')}</th><th className="r">{t('rt.workers')}</th><th className="r">{t('rt.issues')}</th><th className="r">{t('rt.media')}</th></tr></thead>
+                  <tbody>{d.recentReports.map((r) => <tr key={r._id} onClick={() => nav(`/reports?type=daily&open=${r._id}`)}><td>{fmtDate(r.date, lang)}</td><td>{r.siteId?.siteName}</td><td>{r.submittedBy?.name}</td><td className="r">{r.tasks}</td><td className="r">{r.workforce}</td><td className="r">{r.difficulties > 0 ? <span className="tag bad">{r.difficulties}</span> : 0}</td><td className="r">{r.media}</td></tr>)}</tbody>
+                </table>
+              )}
+            </section>
+          )}
+          {d.recentWeekly && d.recentWeekly.length > 0 && (
+            <section className="panel">
+              <h3>{t('dash.tblWeekly')} <Link to="/reports?type=weekly">{t('viewall')}</Link></h3>
+              <table className="selectable">
+                <thead><tr><th>{t('rt.week')}</th><th>{t('col.site')}</th><th>{t('rt.status')}</th><th className="r">{t('rt.tasks')}</th><th className="r">{t('rt.progress')}</th></tr></thead>
+                <tbody>{d.recentWeekly.map((w) => <tr key={w._id} onClick={() => nav(`/reports?type=weekly&open=${w._id}`)}><td>{fmtDate(w.weekStart, lang)} {t('to')} {fmtDate(w.weekEnd, lang)}</td><td>{w.siteId?.siteName}</td><td><span className={'tag ' + (w.status === 'locked' ? 'ok' : 'neutral')}>{t('rt.' + w.status)}</span></td><td className="r">{w.tasks}</td><td className="r">{w.avgProgress}%</td></tr>)}</tbody>
+              </table>
+            </section>
+          )}
+          {d.recentPhotos && d.recentPhotos.length > 0 && (
+            <section className="panel">
+              <h3>{t('dash.photos')}</h3>
+              <div className="photo-row">{d.recentPhotos.map((p) => <Link key={p._id} to={`/projects/${p.siteId}`} title={p.siteName}><img src={p.url} alt={p.caption || ''} /></Link>)}</div>
+            </section>
+          )}
         </>
       );
     }}</Gate>

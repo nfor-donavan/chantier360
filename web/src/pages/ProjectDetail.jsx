@@ -5,7 +5,7 @@ import { useStore } from '../store.jsx';
 import { api } from '../api.js';
 import { useApi } from '../hooks.js';
 import Gate from '../components/Gate.jsx';
-import ReportCard from '../components/ReportCard.jsx';
+import ReportsView from '../components/ReportsView.jsx';
 import { Bar, Lightbox } from '../components/bits.jsx';
 import { fmtDate, fmtXAF, num } from '../utils.js';
 
@@ -15,7 +15,7 @@ function ProjectDetail({ id }) {
   const { t, can, lang } = useStore();
   const ov = useApi(() => api.project(id));
   const [tab, setTab] = useState('overview');
-  const tabs = ['overview', 'tasks', 'timeline', 'photos', can('VIEW_STOCK') && 'stock', can('VIEW_REPORTS') && 'reports', (can('MANAGE_PROJECTS') || can('MANAGE_PROJECT_FINANCIALS')) && 'settings'].filter(Boolean);
+  const tabs = ['overview', 'tasks', 'timeline', 'photos', can('VIEW_STOCK') && 'stock', can('VIEW_REPORTS') && 'reports', can('MANAGE_CLIENT_PORTAL') && 'portal', (can('MANAGE_PROJECTS') || can('MANAGE_PROJECT_FINANCIALS')) && 'settings'].filter(Boolean);
   return (
     <Gate states={[ov]}>{() => {
       const o = ov.data, p = o.project, props = { o, id, reload: ov.reload };
@@ -33,6 +33,7 @@ function ProjectDetail({ id }) {
           {tab === 'photos' && <Photos {...props} />}
           {tab === 'stock' && <Stock {...props} />}
           {tab === 'reports' && <ProjectReports {...props} />}
+          {tab === 'portal' && <PortalTab {...props} />}
           {tab === 'settings' && <Settings {...props} />}
         </>
       );
@@ -96,7 +97,7 @@ function Tasks({ o, id, reload }) {
   const [edit, setEdit] = useState(null), [draft, setDraft] = useState({}), [adding, setAdding] = useState(false), [nt, setNt] = useState({ unit: 'm²' });
   const groups = o.tasks.reduce((a, x) => { (a[x.category || 'General'] ||= []).push(x); return a; }, {});
   const act = async (fn) => { try { await fn(); reload(); bump(); notify(t('toast.saved')); } catch (e) { notify(e.message); } };
-  const save = (task) => act(async () => { await api.updateTask(id, task._id, { cumulativeQty: Number(draft.cumulativeQty), weeklyQty: Number(draft.weeklyQty), weeklyTargetPct: draft.weeklyTargetPct === '' ? '' : Number(draft.weeklyTargetPct), delayReason: draft.delayReason, observation: draft.observation }); setEdit(null); });
+  const save = (task) => act(async () => { await api.updateTask(id, task._id, { cumulativeQty: Number(draft.cumulativeQty), weeklyQty: Number(draft.weeklyQty), weeklyTargetPct: draft.weeklyTargetPct === '' ? '' : Number(draft.weeklyTargetPct), reportedPct: draft.reportedPct === '' || draft.reportedPct == null ? '' : Number(draft.reportedPct), delayReason: draft.delayReason, observation: draft.observation }); setEdit(null); });
   const add = (e) => { e.preventDefault(); act(async () => { await api.addTask(id, { ...nt, totalQty: Number(nt.totalQty), cumulativeQty: Number(nt.cumulativeQty || 0) }); setAdding(false); setNt({ unit: 'm²' }); }); };
   const D = (k) => (e) => setDraft({ ...draft, [k]: e.target.value });
   return (
@@ -108,6 +109,7 @@ function Tasks({ o, id, reload }) {
           {can('MANAGE_TASKS') && <button className="btn ok" onClick={() => setAdding(!adding)}><Plus size={15} /> {t('tk.add')}</button>}
         </div>
       </div>
+      {can('MANAGE_TASKS') && <p className="muted small noprint">{t('tk.pctnote')}</p>}
       {adding && (
         <form className="inline-form noprint" onSubmit={add}>
           <input required placeholder={t('tk.task')} value={nt.name || ''} onChange={(e) => setNt({ ...nt, name: e.target.value })} />
@@ -132,7 +134,7 @@ function Tasks({ o, id, reload }) {
                     <td>{k.subcontractor}</td><td>{k.name}</td><td>{k.unit}</td><td className="r">{num(k.totalQty)}</td>
                     <td className="r"><input className="s" type="number" step="any" value={draft.cumulativeQty} onChange={D('cumulativeQty')} /></td>
                     <td className="r"><input className="s" type="number" step="any" value={draft.weeklyQty} onChange={D('weeklyQty')} /></td>
-                    <td />
+                    <td><input className="s" type="number" min="0" max="100" step="any" placeholder="%" aria-label={t('tk.reported')} title={t('tk.pctnote')} value={draft.reportedPct ?? ''} onChange={D('reportedPct')} /></td>
                     <td className="r"><input className="s" type="number" value={draft.weeklyTargetPct ?? ''} onChange={D('weeklyTargetPct')} /></td>
                     <td><input placeholder={t('tk.notes')} value={draft.observation || ''} onChange={D('observation')} /><input placeholder={t('tk.reason')} value={draft.delayReason || ''} onChange={D('delayReason')} /></td>
                     {can('MANAGE_CLIENT_PORTAL') && <td />}
@@ -141,11 +143,11 @@ function Tasks({ o, id, reload }) {
                 ) : (
                   <tr key={k._id} className={behind ? 'flag' : ''}>
                     <td>{k.subcontractor}</td><td>{k.name}</td><td>{k.unit}</td><td className="r">{num(k.totalQty)}</td><td className="r">{num(k.cumulativeQty)}</td><td className="r">{num(k.weeklyQty)}</td>
-                    <td><div className="cat tight"><Bar value={k.progressPct} /><b>{Math.round(k.progressPct)}%</b></div></td>
+                    <td><div className="cat tight"><Bar value={k.progressPct} /><b>{Math.round(k.progressPct)}%</b></div>{k.reportedPct != null && <div className="muted small">{t('tk.manual')} · {Math.round(k.calculatedPct)}% {t('tk.calculated')}</div>}</td>
                     <td className="r">{k.weeklyTargetPct != null ? `${k.weeklyTargetPct}%` : ''}</td>
                     <td>{behind && <span className="tag bad">{t('tk.behind')}</span>} {k.delayReason ? <span className="muted">{k.delayReason}</span> : k.observation}</td>
                     {can('MANAGE_CLIENT_PORTAL') && <td className="noprint"><input type="checkbox" aria-label={t('tk.client')} checked={!!k.clientVisible} onChange={(e) => act(() => api.updateTask(id, k._id, { clientVisible: e.target.checked }))} /></td>}
-                    {can('MANAGE_TASKS') && <td className="noprint"><button className="btn no" onClick={() => { setEdit(k._id); setDraft({ cumulativeQty: k.cumulativeQty, weeklyQty: k.weeklyQty, weeklyTargetPct: k.weeklyTargetPct ?? '', observation: k.observation || '', delayReason: k.delayReason || '' }); }}>{t('tk.edit')}</button></td>}
+                    {can('MANAGE_TASKS') && <td className="noprint"><button className="btn no" onClick={() => { setEdit(k._id); setDraft({ cumulativeQty: k.cumulativeQty, weeklyQty: k.weeklyQty, reportedPct: k.reportedPct ?? '', weeklyTargetPct: k.weeklyTargetPct ?? '', observation: k.observation || '', delayReason: k.delayReason || '' }); }}>{t('tk.edit')}</button></td>}
                   </tr>
                 );
               })}
@@ -256,11 +258,7 @@ function Stock({ id }) {
   );
 }
 
-function ProjectReports({ id }) {
-  const { t } = useStore();
-  const rp = useApi(() => api.reports(id));
-  return <Gate states={[rp]}>{() => <section className="panel"><h3>{t('tab.reports')}</h3>{rp.data.length === 0 && <p className="muted">{t('rp.none')}</p>}{rp.data.map((r) => <ReportCard key={r._id} r={r} />)}</section>}</Gate>;
-}
+function ProjectReports({ id }) { return <ReportsView fixedSite={id} />; }
 
 function Settings({ o, id, reload }) {
   const { t, can, lang, notify, bump } = useStore();
@@ -273,7 +271,7 @@ function Settings({ o, id, reload }) {
     e.preventDefault(); setBusy(true);
     const body = {};
     if (can('MANAGE_PROJECTS')) Object.assign(body, { siteName: f.siteName, locationCity: f.locationCity, description: f.description, currentPhase: f.currentPhase, startDate: f.startDate, endDate: f.endDate, status: f.status, plannedWorkers: Number(f.plannedWorkers), client: f.client });
-    if (can('MANAGE_PROJECT_FINANCIALS')) Object.assign(body, { budgetXAF: Number(f.budgetXAF || 0), spentXAF: Number(f.spentXAF || 0) });
+    if (can('MANAGE_PROJECT_FINANCIALS')) Object.assign(body, { budgetXAF: Number(f.budgetXAF || 0), ...(p.spentSource === 'expenses' ? {} : { spentXAF: Number(f.spentXAF || 0) }) });
     try { await api.updateProject(id, body); notify(t('toast.saved')); reload(); bump(); } catch (err) { notify(err.message); }
     setBusy(false);
   };
@@ -295,10 +293,49 @@ function Settings({ o, id, reload }) {
         <h3 className="full">{t('se.finance')}</h3>
         <p className="muted full">{t('se.note')}</p>
         <label>{t('se.budget')}<input type="number" min="0" value={f.budgetXAF} onChange={S('budgetXAF')} /></label>
-        <label>{t('se.spent')}<input type="number" min="0" value={f.spentXAF} onChange={S('spentXAF')} /></label>
+        <label>{t('se.spent')}<input type="number" min="0" value={f.spentXAF} onChange={S('spentXAF')} disabled={p.spentSource === 'expenses'} />{p.spentSource === 'expenses' && <span className="muted small">{t('ex.spentLocked')}</span>}</label>
         {p.financialsUpdatedAt && <p className="muted full">{t('se.lastBy')} {p.financialsUpdatedBy?.name || '-'} · {fmtDate(p.financialsUpdatedAt, lang)}</p>}
       </>)}
       <div className="full"><button className="btn ok" type="submit" disabled={busy}>{busy ? t('saving') : t('save')}</button></div>
     </form>
+  );
+}
+
+// The Director decides what a client sees. Everything is off until switched on here, and individual items are released one by one.
+function PortalTab({ o, id, reload }) {
+  const { t, lang, notify } = useStore();
+  const portal = o.project.portal || {};
+  const daily = useApi(() => api.dailyReports({ siteId: id })), weekly = useApi(() => api.weeklyReports({ siteId: id }));
+  const act = async (fn, after) => { try { await fn(); (after || reload)(); } catch (e) { notify(e.message); } };
+  return (
+    <>
+      <section className="panel">
+        <h3>{t('tab.portal')}</h3>
+        <p className="muted">{t('pt.intro')}</p>
+        <div className="switches">
+          {['progress', 'timeline', 'photos', 'videos', 'reports', 'statistics'].map((k) => (
+            <label key={k} className="check left switch"><input type="checkbox" checked={!!portal[k]} onChange={(e) => act(() => api.updateProject(id, { portal: { [k]: e.target.checked } }))} /> {t('pt.' + k)}</label>
+          ))}
+        </div>
+      </section>
+      <div className="grid2">
+        <section className="panel">
+          <h3>{t('pt.milestones')}</h3>
+          {o.milestones.length === 0 && <p className="muted">{t('nodata')}</p>}
+          {o.milestones.map((m) => <label key={m._id} className="check left row-check"><input type="checkbox" checked={!!m.clientVisible} onChange={(e) => act(() => api.updateMilestone(id, m._id, { clientVisible: e.target.checked }))} /> {m.name} <span className="muted">· {t('ms.' + m.status)}</span></label>)}
+        </section>
+        <section className="panel">
+          <h3>{t('pt.reportsList')}</h3>
+          <p className="muted small">{t('pt.weeklyNote')}</p>
+          <Gate states={[daily, weekly]}>{() => (
+            <>
+              {weekly.data.map((w) => <label key={w._id} className="check left row-check"><input type="checkbox" disabled={w.status !== 'locked'} checked={!!w.clientVisible} onChange={(e) => act(() => api.releaseWeekly(w._id, e.target.checked), weekly.reload)} /> {t('rt.weekly')} · {fmtDate(w.weekStart, lang)} <span className="tag neutral">{t('rt.' + w.status)}</span></label>)}
+              {daily.data.map((d) => <label key={d._id} className="check left row-check"><input type="checkbox" checked={!!d.clientVisible} onChange={(e) => act(() => api.releaseDaily(d._id, e.target.checked), daily.reload)} /> {t('rt.daily')} · {fmtDate(d.date, lang)}</label>)}
+              {daily.data.length + weekly.data.length === 0 && <p className="muted">{t('rp.none')}</p>}
+            </>
+          )}</Gate>
+        </section>
+      </div>
+    </>
   );
 }

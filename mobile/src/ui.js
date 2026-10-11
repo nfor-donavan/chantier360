@@ -64,3 +64,16 @@ export const PhotoStrip = ({ uris, onAdd, onRemove, max = 3, label }) => {
     </View>
   );
 };
+
+// Returns { uri }, { denied }, { tooBig }, { error } or null when cancelled. Videos are limited to 60 MB and about 45 seconds.
+export async function takeVideo() {
+  const MAX = 60 * 1024 * 1024;
+  const done = (r) => (r.canceled ? null : r.assets[0].fileSize && r.assets[0].fileSize > MAX ? { tooBig: true } : { uri: r.assets[0].uri });
+  try {
+    const perm = await ImagePicker.requestCameraPermissionsAsync();
+    if (!perm.granted) return { denied: true };
+    return done(await ImagePicker.launchCameraAsync({ mediaTypes: ['videos'], videoMaxDuration: 45 }));
+  } catch (e) {
+    try { return done(await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['videos'] })); } catch { return { error: String((e && e.message) || e) }; }
+  }
+}

@@ -9,8 +9,10 @@ import ProjectDetail from './pages/ProjectDetail.jsx';
 import Materials from './pages/Materials.jsx';
 import Attendance from './pages/Attendance.jsx';
 import Reports from './pages/Reports.jsx';
+import Expenses from './pages/Expenses.jsx';
 import Alerts from './pages/Alerts.jsx';
 import Access from './pages/Access.jsx';
+import Company from './pages/Company.jsx';
 import { PortalHome, PortalProject } from './pages/Portal.jsx';
 
 export default function App() {
@@ -36,7 +38,9 @@ export default function App() {
         {can('VIEW_MATERIALS') && <Route path="/materials" element={<Materials />} />}
         {(can('VIEW_ATTENDANCE') || can('APPROVE_ATTENDANCE')) && <Route path="/attendance" element={<Attendance />} />}
         {can('VIEW_REPORTS') && <Route path="/reports" element={<Reports />} />}
+        {can('VIEW_EXPENSES') && <Route path="/expenses" element={<Expenses />} />}
         {can('VIEW_ALERTS') && <Route path="/alerts" element={<Alerts />} />}
+        {can('MANAGE_COMPANY') && <Route path="/company" element={<Company />} />}
         {can('MANAGE_USERS') && <Route path="/access" element={<Access />} />}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

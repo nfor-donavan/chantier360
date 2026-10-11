@@ -1,7 +1,7 @@
 const router = require('express').Router();
 const { MaterialLog, MaterialRequest, PurchaseOrder } = require('../models');
 const { can, scoped, assertProject, pickProject } = require('../middleware/auth');
-const { createMaterialLog } = require('../services/records');
+const { createMaterialLog, updateMaterialLog, deleteMaterialLog } = require('../services/records');
 const { httpError, wrap } = require('../utils/http');
 const own = require('../utils/populate');
 
@@ -17,6 +17,21 @@ router.get('/logs', can('VIEW_MATERIALS'), wrap(async (req, res) => {
 router.post('/logs', can('MANAGE_DELIVERIES'), wrap(async (req, res) => {
   const siteId = pickProject(req, req.body.siteId);
   res.status(201).json(await createMaterialLog({ tenantId: req.user.tenantId, userId: req.user.id, siteId, data: req.body }));
+}));
+
+const owned = async (req) => {
+  const log = await MaterialLog.findOne({ _id: req.params.id, tenantId: req.user.tenantId }).select('siteId');
+  if (!log) throw httpError(404, 'Delivery not found');
+  assertProject(req, log.siteId);
+  return log.siteId;
+};
+router.patch('/logs/:id', can('MANAGE_DELIVERIES'), wrap(async (req, res) => {
+  const siteId = await owned(req);
+  res.json(await updateMaterialLog({ tenantId: req.user.tenantId, userId: req.user.id, siteId, data: { ...req.body, logId: req.params.id } }));
+}));
+router.delete('/logs/:id', can('MANAGE_DELIVERIES'), wrap(async (req, res) => {
+  const siteId = await owned(req);
+  res.json(await deleteMaterialLog({ tenantId: req.user.tenantId, userId: req.user.id, siteId, data: { logId: req.params.id } }));
 }));
 
 // Purchase orders: what HQ has ordered. Foremen deliver against these.

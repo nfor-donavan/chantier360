@@ -32,7 +32,7 @@ export default function Login() {
         <div className="login-tools"><Toggles /></div>
         <form onSubmit={(e) => { e.preventDefault(); go(email, password); }}>
           <h2>{t('login.title')}</h2>
-          <p className="muted">{t('login.sub')}</p>
+          <p className="muted">{t('login.sub2')}</p>
           <label>{t('email')}<input value={email} onChange={(e) => setEmail(e.target.value)} type="email" required /></label>
           <label>{t('password')}<input value={password} onChange={(e) => setPassword(e.target.value)} type="password" required /></label>
           {busy && <div className="note">{t('wake')}</div>}

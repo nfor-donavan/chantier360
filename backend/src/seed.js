@@ -1,11 +1,13 @@
-// Loads demo data for MAC Construction Co. Safe to re-run: it clears this database first.
+// Loads demo data for the demo company (Group LAN BTP). Safe to re-run: it clears this database first.
 // The centrepiece project (Maison des Avocats) mirrors the structure of the company's own site documents.
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 const { MONGO_URI } = require('./config');
 const M = require('./models');
 const { DEFAULT_ROLES } = require('./permissions');
-const { createMaterialLog, createAttendance, createReport } = require('./services/records');
+const { createMaterialLog, createAttendance, createReport, createWorker } = require('./services/records');
+const { buildWeek } = require('./services/weekly');
+const { recomputeSpent } = require('./services/expenses');
 const { recomputeProgress } = require('./services/progress');
 
 const d = (s) => new Date(s + 'T09:00:00Z');
@@ -17,7 +19,7 @@ const svg = (title, sub, a, b) => 'data:image/svg+xml;utf8,' + encodeURIComponen
   for (const m of Object.values(M)) await m.deleteMany({}).setOptions({ skipTenant: true });
   const hash = await bcrypt.hash('demo1234', 10);
 
-  const mac = await M.Tenant.create({ companyName: 'MAC Construction Co.', officeAddress: 'Bastos, Yaoundé' });
+  const mac = await M.Tenant.create({ companyName: 'Group LAN BTP', officeAddress: 'Yaoundé', logo: require('./demo-logo') });
   const rival = await M.Tenant.create({ companyName: 'Demo Rival BTP', officeAddress: 'Akwa, Douala' });
   const tenantId = mac._id;
   for (const t of [mac, rival]) await M.Role.insertMany(Object.entries(DEFAULT_ROLES).map(([key, r]) => ({ tenantId: t._id, key, label: r.label, permissions: r.permissions })));
@@ -37,7 +39,7 @@ const svg = (title, sub, a, b) => 'data:image/svg+xml;utf8,' + encodeURIComponen
   ]);
 
   const U = (name, email, role, title, projectIds = [], extra = {}) => ({ tenantId, name, email, role, title, projectIds, passwordHash: hash, ...extra });
-  const [ceo, eng, fon, carine, nkeng, , abena] = await M.User.create([
+  const [ceo, eng, fon, carine, nkeng, , abena, secretary] = await M.User.create([
     U('Mballa Armand', 'ceo@mac-construction.cm', 'director', 'General Director'),
     U('Ngo Biyong Estelle', 'engineer@mac-construction.cm', 'engineer', 'Works Engineer', [maison._id, bastos._id]),
     U('Fon Emmanuel', 'foreman@mac-construction.cm', 'foreman', 'Site Foreman', [maison._id]),
@@ -45,6 +47,7 @@ const svg = (title, sub, a, b) => 'data:image/svg+xml;utf8,' + encodeURIComponen
     U('Nkeng Patrick', 'nkeng@mac-construction.cm', 'foreman', 'Site Foreman', [bonanjo._id]),
     U('Tamfu Gilbert', 'tamfu@mac-construction.cm', 'foreman', 'Site Foreman', [bamenda._id]),
     U('Me Abena Claire', 'client@ordre-avocats.cm', 'client', 'Client representative', [maison._id], { client: client._id }),
+    U('Nkoulou Brigitte', 'secretary@mac-construction.cm', 'secretary', 'Administrative Secretary'),
   ]);
   await M.ProjectSite.updateOne({ _id: maison._id, tenantId }, { financialsUpdatedBy: ceo._id });
 
@@ -64,7 +67,7 @@ const svg = (title, sub, a, b) => 'data:image/svg+xml;utf8,' + encodeURIComponen
     T(CA, 'Coffrage', 'Coffrage poteaux de 50*50cm', 'ml', 54.1, 54.1),
     T(CO, 'Coffrage', 'Coffrage des 03 escaliers du SS-3 / SS-4', 'forfait', 3, 1),
     T(CA, 'Coffrage', 'Coffrage poutres de 20*60cm', 'ml', 38.4, 12.32),
-    T('Équipe interne', 'Escaliers & ascenseur', "Escalier E1 du SS-4 (coffrage, ferraillage, coulage)", '%', 100, 55, 0, 100),
+    { ...T('Équipe interne', 'Escaliers & ascenseur', "Escalier E1 du SS-4 (coffrage, ferraillage, coulage)", '%', 100, 55, 0, 100), reportedPct: 55 },
     T('Équipe interne', 'Escaliers & ascenseur', "Cage d'ascenseur SS-3", '%', 100, 66.67, 0, 100),
     T('Équipe interne', 'Escaliers & ascenseur', 'Escalier SS-3', '%', 100, 66.67, 0, 100),
     T('Équipe interne', 'Remblais & platelage', 'Remblais périphériques SS-2 bloc 02 et SS-4', '%', 100, 77, 0, 85, 'Pluie'),
@@ -105,6 +108,20 @@ const svg = (title, sub, a, b) => 'data:image/svg+xml;utf8,' + encodeURIComponen
     stock('Vibreurs', 'out', 3, 'Chantier'), stock('Ficelles maçon', 'in', 2, 'GES'), stock('Disques à couper', 'in', 2, 'GES'), stock('Disques à couper', 'out', 2, 'Chantier'),
   ]));
 
+  // Named workforce for Maison des Avocats. Attendance picks from this register; removing someone never touches past attendance.
+  const FIRST = ['Jean', 'Paul', 'Emmanuel', 'Samuel', 'Pierre', 'Joseph', 'Daniel', 'Alain', 'Serge', 'Blaise', 'Rodrigue', 'Hervé', 'Fabrice', 'Gilbert', 'Martin', 'Cyrille', 'Thierry', 'Armand', 'Boris', 'Landry', 'Eric', 'Moïse', 'Ibrahim', 'Aimé', 'Constant', 'Désiré', 'Léopold', 'Marcel', 'Norbert', 'Olivier'];
+  const LAST = ['Mbarga', 'Fouda', 'Essomba', 'Nkoulou', 'Tchouta', 'Biyong', 'Ndongo', 'Abega', 'Atangana', 'Owona', 'Mvondo', 'Ewane', 'Manga', 'Ngoh', 'Onana', 'Bekolo', 'Ateba', 'Zogo', 'Eyenga', 'Tsimi', 'Nguele', 'Assiga', 'Bella', 'Evina', 'Mebenga', 'Ondoa', 'Etoundi', 'Messi', 'Nana', 'Kamga'];
+  const pool = { CT: 1, CC: 1, HSE: 1, Stagiaires: 4, 'Magasinière': 1, "Chefs d'équipe": 2, 'Techniciens ferrailleurs': 6, 'Techniciens coffreurs': 20, 'Manœuvres': 18, Gardiens: 3 };
+  const roster = {}; let n = 0;
+  for (const [category, count] of Object.entries(pool)) {
+    roster[category] = [];
+    for (let i = 0; i < count; i++, n++) {
+      const w = await createWorker({ tenantId, userId: fon._id, siteId: maison._id, data: { name: `${FIRST[n % FIRST.length]} ${LAST[(n * 7 + 3) % LAST.length]}`, category } }).catch(() => createWorker({ tenantId, userId: fon._id, siteId: maison._id, data: { name: `${FIRST[(n + 11) % FIRST.length]} ${LAST[(n * 5 + 1) % LAST.length]} ${n}`, category } }));
+      roster[category].push(w.uid);
+    }
+  }
+  const crewUids = (counts) => Object.entries(counts).flatMap(([cat, k]) => roster[cat].slice(0, k));
+
   const orders = [
     [maison, 'Dangote Cement (bags)', 'Cimencam Distribution', 600], [maison, 'Iron Rods 12mm (units)', 'Sotrafer SARL', 1200], [maison, 'Sand (m³)', 'Carrières du Littoral', 40],
     [bastos, 'Hollow Blocks 15cm (units)', 'Briqueterie Mfoundi', 4000], [kribi, 'Gravel 15/25 (m³)', 'Carrières du Littoral', 80], [kribi, 'Dangote Cement (bags)', 'Cimencam Distribution', 700],
@@ -118,14 +135,21 @@ const svg = (title, sub, a, b) => 'data:image/svg+xml;utf8,' + encodeURIComponen
     [bonanjo, nkeng, 'Dangote Cement (bags)', 1500, 1380, 'Cimencam Distribution', '2026-09-28'], [kribi, carine, 'Sand (m³)', 60, 60, 'Carrières du Littoral', '2026-09-27'],
     [maison, fon, 'Hollow Blocks 15cm (units)', 4000, 3720, 'Briqueterie Mfoundi', '2026-09-26'], [maison, fon, 'Dangote Cement (bags)', 500, 455, 'Cimencam Distribution', '2026-09-22'],
   ];
-  for (const [s, u, materialType, o, r, supplierName, date] of mats) await createMaterialLog({ tenantId, userId: u._id, siteId: s._id, createdAt: d(date), data: { materialType, quantityOrdered: o, quantityReceived: r, supplierName } });
+  const UNITS = { 'Dangote Cement (bags)': 'bags', 'Sand (m³)': 'm³', 'Gravel 15/25 (m³)': 'm³' };
+  for (const [site, u, materialType, o, r, supplierName, date] of mats) {
+    const po = await M.PurchaseOrder.create({ tenantId, siteId: site._id, materialType, supplierName, quantityOrdered: o });
+    await createMaterialLog({ tenantId, userId: u._id, siteId: site._id, createdAt: d(date), data: { orderId: po._id, quantityReceived: r, supplierName, unit: UNITS[materialType] || 'units', deliveryDate: d(date) } });
+  }
+  // A delivery with no purchase order: the foreman records the store it came from.
+  await createMaterialLog({ tenantId, userId: fon._id, siteId: maison._id, createdAt: d('2026-09-21'), data: { materialType: 'Binding wire (rolls)', supplierName: 'Quincaillerie Mvog-Ada', quantityReceived: 12, unit: 'rolls', deliveryDate: d('2026-09-21'), notes: 'Bought on site, receipt kept by the storekeeper' } });
 
   const crew = { CT: 1, CC: 1, HSE: 1, Stagiaires: 4, Magasinière: 1, "Chefs d'équipe": 2, 'Techniciens ferrailleurs': 0, 'Techniciens coffreurs': 15, Manœuvres: 8, Gardiens: 2 };
   const bd = (o) => Object.entries(o).map(([category, count]) => ({ category, count }));
   const att = (site, u, n, date, status, breakdown) => createAttendance({ tenantId, userId: u._id, siteId: site._id, createdAt: d(date), data: { totalWorkersPresent: n, breakdown, status, date: d(date) } });
-  await att(maison, fon, 35, '2026-09-30', 'Pending_HQ_Approval', bd(crew));
-  await att(maison, fon, 45, '2026-09-29', 'Pending_HQ_Approval', bd({ ...crew, Manœuvres: 14, 'Techniciens coffreurs': 19 }));
-  await att(maison, fon, 34, '2026-09-28', 'Approved', bd({ ...crew, Manœuvres: 7 }));
+  const byWorkers = (day, status, counts) => createAttendance({ tenantId, userId: fon._id, siteId: maison._id, createdAt: d(day), data: { workers: crewUids(counts), status, date: d(day) } });
+  await byWorkers('2026-09-30', 'Pending_HQ_Approval', crew);
+  await byWorkers('2026-09-29', 'Pending_HQ_Approval', { ...crew, Manœuvres: 14, 'Techniciens coffreurs': 19 });
+  await byWorkers('2026-09-28', 'Approved', { ...crew, Manœuvres: 7 });
   await att(bonanjo, nkeng, 131, '2026-09-30', 'Pending_HQ_Approval'); await att(kribi, carine, 36, '2026-09-30', 'Pending_HQ_Approval');
   await att(bonanjo, nkeng, 109, '2026-09-29', 'Approved'); await att(bastos, nkeng, 45, '2026-09-29', 'Approved');
 
@@ -153,13 +177,32 @@ const svg = (title, sub, a, b) => 'data:image/svg+xml;utf8,' + encodeURIComponen
     [maison, fon, 'Ceramic tiles 60x60 (m²)', 900, 11250000], [bamenda, null, 'Iron Rods 12mm (units)', 600, 4500000],
   ].map(([s, u, materialType, quantity, estimateXAF]) => ({ tenantId, siteId: s._id, materialType, quantity, estimateXAF, requestedBy: (u || ceo)._id })));
 
+  // Expenses for Maison des Avocats. "Spent" on the project is the total of these records.
+  const EX = [
+    ['Subcontractors', 'Ferrailleur Ndeme: rebar works, phases SS-4 and SS-3', 1150000000, 'Ferrailleur Ndeme', '2026-08-20'], ['Materials', 'Cement, steel and aggregates, July to August', 980000000, 'Cimencam / Sotrafer', '2026-08-28'],
+    ['Labour', 'Direct labour, July to August', 410000000, 'Payroll', '2026-08-31'], ['Equipment', 'Crane and vibrator hire', 215000000, 'Loc-Engins SARL', '2026-08-25'],
+    ['Transport', 'Materials transport', 85000000, 'Transports Mfoundi', '2026-08-29'], ['Administration', 'Site office, insurance, permits', 60000000, 'Various', '2026-09-01'],
+    ['Subcontractors', 'Coffreurs Albert and Otis: formwork', 150000000, 'Albert / Otis', '2026-09-02'], ['Materials', 'Hollow blocks and binding wire', 70000000, 'Briqueterie Mfoundi', '2026-09-03'],
+  ];
+  for (const [category, description, amountXAF, payee, date] of EX) await M.Expense.create({ tenantId, siteId: maison._id, category, description, amountXAF, payee, date: d(date), enteredBy: secretary._id });
+  await recomputeSpent(tenantId, maison._id);
+
+  // Client portal: nothing is visible until released. Here the Director has released these sections for the demo.
+  await M.ProjectSite.updateOne({ _id: maison._id, tenantId }, { portal: { progress: true, timeline: true, photos: true, videos: true, reports: true, statistics: true } });
+  const firstReport = await M.DailyReport.findOne({ tenantId, siteId: maison._id }).sort({ date: 1 });
+  firstReport.media.push({ url: svg('Walls SS-3', 'Formwork in progress, 31 Aug', '#23395B', '#8A6D1E'), kind: 'photo', caption: 'Walls SS-3, formwork in progress', uploadedBy: fon._id, clientVisible: true },
+    { url: svg('Lift shaft', 'Rebar complete', '#2D3142', '#5B7DB1'), kind: 'photo', caption: 'Lift shaft SS-3 (internal, not released)', uploadedBy: fon._id, clientVisible: false });
+  firstReport.clientVisible = true; await firstReport.save();
+  const built = await buildWeek(tenantId, maison._id, d('2026-08-31'));
+  await M.WeeklyReport.create({ tenantId, siteId: maison._id, createdBy: eng._id, status: 'locked', lockedBy: eng._id, lockedAt: d('2026-09-05'), clientVisible: true, objectives: 'Finish SS-3 wall rebar and formwork; start stair E1.', ...built });
+
   // Second company, to prove isolation.
   const akwa = await M.ProjectSite.create({ tenantId: rival._id, siteName: 'Akwa Commercial Centre', locationCity: 'Douala', budgetXAF: 900000000, spentXAF: 150000000, progressPct: 15, plannedWorkers: 30, startDate: d('2026-07-01'), status: 'Active' });
   await M.User.create({ tenantId: rival._id, name: 'Rival Director', email: 'director@rival-btp.cm', role: 'director', title: 'Director', passwordHash: hash });
   await createMaterialLog({ tenantId: rival._id, siteId: akwa._id, data: { materialType: 'Dangote Cement (bags)', quantityOrdered: 100, quantityReceived: 90, supplierName: 'Local supplier' } });
 
   console.log('Seeded. Password for every demo account: demo1234');
-  console.log('Web: ceo@mac-construction.cm (General Director), engineer@mac-construction.cm (Engineer), client@ordre-avocats.cm (Client)');
+  console.log('Web: ceo@mac-construction.cm (General Director), engineer@mac-construction.cm (Engineer), secretary@mac-construction.cm (Secretary), client@ordre-avocats.cm (Client)');
   console.log('Mobile: foreman@mac-construction.cm (Maison des Avocats), carine@mac-construction.cm (Kribi)');
   console.log('Isolation check: director@rival-btp.cm');
   await mongoose.disconnect();

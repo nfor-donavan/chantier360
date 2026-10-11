@@ -17,12 +17,15 @@ async function request(path, { method = 'GET', body, form } = {}) {
   if (!res.ok) throw new ApiError(res.status, data.error || 'Request failed');
   return data;
 }
+const qs = (o = {}) => { const p = new URLSearchParams(Object.entries(o).filter(([, v]) => v !== undefined && v !== null && v !== '')); const x = p.toString(); return x ? `?${x}` : ''; };
 const post = (p, body) => request(p, { method: 'POST', body });
 const patch = (p, body) => request(p, { method: 'PATCH', body });
 
 export const api = {
   login: (email, password) => post('/auth/login', { email, password }),
   me: () => request('/auth/me'),
+  company: () => request('/company'),
+  updateCompany: (b) => patch('/company', b),
   dashboard: () => request('/dashboard'),
   projects: () => request('/projects'),
   project: (id) => request(`/projects/${id}`),
@@ -54,5 +57,37 @@ export const api = {
   clients: () => request('/clients'),
   portalProjects: () => request('/portal/projects'),
   portalProject: (id) => request(`/portal/projects/${id}`),
+  dailyReports: (p) => request(`/reports/daily${qs(p)}`),
+  dailyReport: (id) => request(`/reports/daily/${id}`),
+  addReportMedia: (id, b) => post(`/reports/daily/${id}/media`, b),
+  updateReportMedia: (id, mid, b) => patch(`/reports/daily/${id}/media/${mid}`, b),
+  deleteReportMedia: (id, mid) => request(`/reports/daily/${id}/media/${mid}`, { method: 'DELETE' }),
+  releaseDaily: (id, v) => patch(`/reports/daily/${id}`, { clientVisible: v }),
+  weeklyReports: (p) => request(`/reports/weekly${qs(p)}`),
+  weeklyReport: (id) => request(`/reports/weekly/${id}`),
+  generateWeekly: (siteId, date) => post('/reports/weekly/generate', { siteId, date }),
+  updateWeekly: (id, b) => patch(`/reports/weekly/${id}`, b),
+  lockWeekly: (id) => post(`/reports/weekly/${id}/lock`, {}),
+  unlockWeekly: (id) => post(`/reports/weekly/${id}/unlock`, {}),
+  releaseWeekly: (id, v) => patch(`/reports/weekly/${id}/release`, { clientVisible: v }),
+  workers: (p) => request(`/workers${qs(p)}`),
+  expenses: (p) => request(`/expenses${qs(p)}`),
+  addExpense: (b) => post('/expenses', b),
+  updateExpense: (id, b) => patch(`/expenses/${id}`, b),
+  deleteExpense: (id) => request(`/expenses/${id}`, { method: 'DELETE' }),
   upload: (file) => { const f = new FormData(); f.append('photo', file); return request('/uploads', { method: 'POST', form: f }); },
 };
+
+// Uploads a photo or video with progress. Videos go to a separate endpoint with a larger size limit.
+export function uploadMedia(file, onProgress) {
+  const video = file.type.startsWith('video/');
+  return new Promise((resolve, reject) => {
+    const x = new XMLHttpRequest();
+    x.open('POST', `${BASE}/api/uploads${video ? '/video' : ''}`);
+    if (token) x.setRequestHeader('Authorization', `Bearer ${token}`);
+    x.upload.onprogress = (e) => e.lengthComputable && onProgress?.(Math.round((e.loaded / e.total) * 100));
+    x.onload = () => { let d = {}; try { d = JSON.parse(x.responseText); } catch {} x.status >= 200 && x.status < 300 ? resolve(d) : reject(new ApiError(x.status, d.error || 'Upload failed')); };
+    x.onerror = () => reject(new ApiError(0, 'network'));
+    const f = new FormData(); f.append(video ? 'video' : 'photo', file); x.send(f);
+  });
+}

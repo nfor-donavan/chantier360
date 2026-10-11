@@ -1,8 +1,10 @@
 const { Task, ProjectSite } = require('../models');
 
-const pctOf = (t) => (t.totalQty > 0 ? Math.min(100, (t.cumulativeQty / t.totalQty) * 100) : 0);
+const calcPct = (t) => (t.totalQty > 0 ? Math.min(100, (t.cumulativeQty / t.totalQty) * 100) : 0);
+// A percentage typed in by the foreman or Director is kept as the reported figure. Without one, the quantity-based figure is used.
+const pctOf = (t) => (t.reportedPct != null ? t.reportedPct : calcPct(t));
 const round1 = (n) => Math.round(n * 10) / 10;
-const withPct = (t) => ({ ...(t.toObject ? t.toObject() : t), progressPct: round1(pctOf(t)) });
+const withPct = (t) => ({ ...(t.toObject ? t.toObject() : t), progressPct: round1(pctOf(t)), calculatedPct: round1(calcPct(t)) });
 
 function weighted(list) {
   const w = list.reduce((a, t) => a + (t.weight ?? 1), 0);
@@ -35,4 +37,4 @@ const weekKey = (d = new Date()) => {
   t.setUTCDate(t.getUTCDate() + 4 - day); const y = t.getUTCFullYear();
   return `${y}-W${String(Math.ceil(((t - Date.UTC(y, 0, 1)) / 864e5 + 1) / 7)).padStart(2, '0')}`;
 };
-module.exports = { pctOf, withPct, summarize, recomputeProgress, weekKey, round1 };
+module.exports = { calcPct, pctOf, withPct, summarize, recomputeProgress, weekKey, round1 };

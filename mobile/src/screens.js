@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, TextInput, Pressable, ScrollView, Image, Switch, Alert, ActivityIndicator } from 'react-native';
-import { Button, Card, Label, PhotoBox, PhotoStrip, takePhoto } from './ui';
+import { Button, Card, Label, PhotoBox, PhotoStrip, takePhoto, takeVideo } from './ui';
 import { useApp, demoForemen } from './ctx';
 
 const Screen = ({ children }) => {
@@ -100,7 +100,7 @@ const Row = ({ item, pending }) => {
   );
 };
 
-export function Home({ user, online, forceOffline, setForceOffline, pending, syncing, history, go, onLogout }) {
+export function Home({ user, company, online, forceOffline, setForceOffline, pending, syncing, history, go, onLogout }) {
   const { C, t, lang } = useApp();
   const Tile = ({ icon, title, sub, to, badge }) => (
     <Pressable onPress={() => go(to)} accessibilityRole="button" style={{ flex: 1, backgroundColor: C.card, borderRadius: 14, padding: 16, borderWidth: 1, borderColor: C.line, minHeight: 124 }}>
@@ -117,7 +117,13 @@ export function Home({ user, online, forceOffline, setForceOffline, pending, syn
           <Toggles dark />
           <Pressable onPress={onLogout} hitSlop={10}><Text style={{ color: '#9FB0CC' }}>{t('signout')}</Text></Pressable>
         </View>
-        <Text style={{ color: '#9FB0CC', marginTop: 14 }}>{t('hello')} {user.name.split(' ')[0]}</Text>
+        {!!company?.companyName && (
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 14 }}>
+            {!!company.logoUrl && <Image source={{ uri: company.logoUrl }} style={{ width: 34, height: 34, borderRadius: 6, backgroundColor: '#fff', marginRight: 10 }} resizeMode="contain" />}
+            <Text style={{ color: '#fff', fontWeight: '700', fontSize: 16 }}>{company.companyName}</Text>
+          </View>
+        )}
+        <Text style={{ color: '#9FB0CC', marginTop: 10 }}>{t('hello')} {user.name.split(' ')[0]}</Text>
         <Text style={{ color: '#fff', fontSize: 24, fontWeight: '800', marginTop: 2 }}>{user.site?.siteName}</Text>
         <Text style={{ color: '#C5D0E4' }}>{user.site?.locationCity} · {new Date().toLocaleDateString(lang === 'fr' ? 'fr-FR' : 'en-GB', { weekday: 'long', day: 'numeric', month: 'long' })}</Text>
       </View>
@@ -151,74 +157,191 @@ export function Home({ user, online, forceOffline, setForceOffline, pending, syn
 
 const snapInto = async (t, add) => { const r = await takePhoto(); if (r?.denied) Alert.alert(t('cam.denied')); else if (r?.error) Alert.alert(t('cam.error'), r.error); else if (r) add(r.uri); };
 
-// Attendance: who was on site, by category. No wages here.
-export function Attendance({ boot, user, back, save }) {
+// Attendance: pick the registered workers who are present. Registering a worker is a separate step, done here or by the Director.
+export function Attendance({ boot, back, save, addWorker, removeWorker }) {
   const { C, t } = useApp();
-  const cats = boot.categories || [];
-  const planned = boot.project?.plannedWorkers ?? user.site?.plannedWorkers ?? 0;
-  const [counts, setCounts] = useState({});
+  const inp = useInput();
+  const cats = boot.categories || [], workers = boot.workers || [];
+  const planned = boot.project?.plannedWorkers ?? 0;
+  const [sel, setSel] = useState([]);
   const [photo, setPhoto] = useState(null);
-  const total = Object.values(counts).reduce((a, b) => a + b, 0);
+  const [manage, setManage] = useState(workers.length === 0);
+  const [nw, setNw] = useState({ name: '', category: null });
+  const toggle = (uid) => setSel((s) => (s.includes(uid) ? s.filter((x) => x !== uid) : [...s, uid]));
+  const register = () => {
+    const r = addWorker(nw.name, nw.category);
+    if (r.error) return Alert.alert(t(r.error));
+    setNw({ name: nw.name.slice(0, 0), category: nw.category });
+  };
+  const confirmRemove = (w) => Alert.alert(t('wk.removeTitle'), `${w.name}\n${t('wk.removeNote')}`, [
+    { text: t('cancel') || 'Cancel', style: 'cancel' },
+    { text: t('wk.remove'), style: 'destructive', onPress: () => { const r = removeWorker(w.uid); if (r?.error) Alert.alert(t(r.error)); else setSel((s) => s.filter((x) => x !== w.uid)); } },
+  ]);
+  const groups = cats.map((c) => [c.name, workers.filter((w) => w.category === c.name)]).filter(([, l]) => l.length);
   return (
     <View style={{ flex: 1 }}>
       <Back onPress={back} title={t('att.title')} />
       <Screen>
         <Card>
-          <Label>{t('att.cats')}</Label>
-          {cats.length === 0 && <Text style={{ color: C.mute }}>{t('cats.none')}</Text>}
-          {cats.map((c) => <Counter key={c._id} label={c.name} value={counts[c.name] || 0} onChange={(v) => setCounts({ ...counts, [c.name]: v })} />)}
-          <View style={{ borderTopWidth: 1, borderTopColor: C.line, marginTop: 10, paddingTop: 10, flexDirection: 'row', justifyContent: 'space-between' }}>
-            <Text style={{ color: C.ink, fontWeight: '700' }}>{t('att.totalp')}</Text>
-            <Text style={{ color: C.ink, fontWeight: '800', fontSize: 20 }}>{total}{planned ? <Text style={{ color: C.mute, fontSize: 13, fontWeight: '400' }}> / {planned} {t('att.planned')}</Text> : null}</Text>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Text style={{ color: C.ink, fontWeight: '800', fontSize: 16 }}>{t('att.select')}</Text>
           </View>
-          {planned > 0 && total > planned * 1.1 && <Text style={{ color: C.badfg, marginTop: 8 }}>{t('att.above')}</Text>}
+          {workers.length === 0 && <Text style={{ color: C.mute, marginTop: 8 }}>{t('att.noworkers')}</Text>}
+          <View style={{ flexDirection: 'row', gap: 16, marginTop: 8 }}>
+            <Pressable onPress={() => setSel(workers.map((w) => w.uid))}><Text style={{ color: C.dark ? C.yellow : '#0F1E38', fontWeight: '700' }}>{t('att.selectAll')}</Text></Pressable>
+            <Pressable onPress={() => setSel([])}><Text style={{ color: C.mute, fontWeight: '700' }}>{t('att.clear')}</Text></Pressable>
+          </View>
+          {groups.map(([cat, list]) => (
+            <View key={cat} style={{ marginTop: 14 }}>
+              <Text style={{ color: C.mute, fontWeight: '700', fontSize: 12.5, marginBottom: 4 }}>{cat} ({list.filter((w) => sel.includes(w.uid)).length}/{list.length})</Text>
+              {list.map((w) => {
+                const on = sel.includes(w.uid);
+                return (
+                  <View key={w.uid} style={{ flexDirection: 'row', alignItems: 'center', borderBottomWidth: 1, borderBottomColor: C.line }}>
+                    <Pressable onPress={() => toggle(w.uid)} accessibilityRole="checkbox" accessibilityState={{ checked: on }} style={{ flex: 1, flexDirection: 'row', alignItems: 'center', paddingVertical: 11 }}>
+                      <View style={{ width: 24, height: 24, borderRadius: 6, borderWidth: 2, borderColor: on ? C.green : C.inputline, backgroundColor: on ? C.green : 'transparent', alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>{on && <Text style={{ color: '#fff', fontWeight: '800' }}>✓</Text>}</View>
+                      <Text style={{ color: C.ink, fontSize: 15, flex: 1 }}>{w.name}{w.pending ? <Text style={{ color: C.mute, fontSize: 12 }}>  · {t('wk.pending')}</Text> : null}</Text>
+                    </Pressable>
+                    {manage && <Pressable onPress={() => confirmRemove(w)} hitSlop={8}><Text style={{ color: C.badfg, fontWeight: '700' }}>{t('wk.remove')}</Text></Pressable>}
+                  </View>
+                );
+              })}
+            </View>
+          ))}
+          <View style={{ borderTopWidth: 1, borderTopColor: C.line, marginTop: 12, paddingTop: 10, flexDirection: 'row', justifyContent: 'space-between' }}>
+            <Text style={{ color: C.ink, fontWeight: '700' }}>{t('att.totalp')}</Text>
+            <Text style={{ color: C.ink, fontWeight: '800', fontSize: 20 }}>{sel.length}{planned ? <Text style={{ color: C.mute, fontSize: 13, fontWeight: '400' }}> / {planned} {t('att.planned')}</Text> : null}</Text>
+          </View>
+          {planned > 0 && sel.length > planned * 1.1 && <Text style={{ color: C.badfg, marginTop: 8 }}>{t('att.above')}</Text>}
+        </Card>
+
+        <Pressable onPress={() => setManage(!manage)} style={{ marginTop: 14 }}><Text style={{ color: C.dark ? C.yellow : '#0F1E38', fontWeight: '700' }}>{manage ? t('wk.done') : `＋ ${t('wk.manage')}`}</Text></Pressable>
+        {manage && (
+          <Card style={{ marginTop: 10 }}>
+            <Text style={{ color: C.ink, fontWeight: '800' }}>{t('wk.add')}</Text>
+            <Label>{t('wk.name')}</Label>
+            <TextInput value={nw.name} onChangeText={(x) => setNw({ ...nw, name: x })} style={inp} autoCapitalize="words" />
+            <Label>{t('wk.category')}</Label>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>{cats.map((c) => <Chip key={c._id} text={c.name} on={nw.category === c.name} onPress={() => setNw({ ...nw, category: c.name })} />)}</View>
+            {cats.length === 0 && <Text style={{ color: C.mute }}>{t('cats.none')}</Text>}
+            <View style={{ height: 8 }} />
+            <Button title={t('wk.save')} kind="ghost" onPress={register} />
+          </Card>
+        )}
+
+        <Card style={{ marginTop: 14 }}>
           <Label>{t('att.photo')}</Label>
           <PhotoBox uri={photo} label={t('att.take')} onPress={() => snapInto(t, setPhoto)} />
         </Card>
         <View style={{ height: 16 }} />
-        <Button title={t('att.save')} disabled={!photo || total === 0} onPress={() => save({ type: 'attendance', totalWorkersPresent: total, breakdown: cats.map((c) => ({ category: c.name, count: counts[c.name] || 0 })).filter((b) => b.count > 0), photos: [photo], title: `${t('att.item')}: ${total} ${t('workers')}`, detail: Object.entries(counts).filter(([, v]) => v > 0).map(([k, v]) => `${v} ${k}`).join(', ') })} />
-        {(!photo || total === 0) && <Hint>{t('hint.photo')}</Hint>}
+        <Button title={t('att.save')} disabled={!photo || sel.length === 0} onPress={() => {
+          const picked = workers.filter((w) => sel.includes(w.uid));
+          const counts = {}; picked.forEach((w) => { counts[w.category] = (counts[w.category] || 0) + 1; });
+          save({ type: 'attendance', workers: picked.map((w) => w.uid), totalWorkersPresent: picked.length, photos: [photo], title: `${t('att.item')}: ${picked.length} ${t('workers')}`, detail: Object.entries(counts).map(([k, v]) => `${v} ${k}`).join(', ') });
+        }} />
+        {(!photo || sel.length === 0) && <Hint>{t('hint.photo')}</Hint>}
       </Screen>
     </View>
   );
 }
 
-export function Delivery({ orders, back, save }) {
+const today = () => new Date().toISOString().slice(0, 10);
+const validDate = (s) => /^\d{4}-\d{2}-\d{2}$/.test(s) && !Number.isNaN(+new Date(s));
+
+// Deliveries: record, correct and delete. Each delivery keeps who delivered it, the unit and the date.
+export function Delivery({ boot, orders, queue, back, saveDelivery, deleteDelivery }) {
   const { C, t } = useApp();
   const inp = useInput();
-  const [order, setOrder] = useState(null);
-  const [qty, setQty] = useState('');
-  const [photo, setPhoto] = useState(null);
-  const sel = order && orders.find((o) => o._id === order);
-  const got = parseInt(qty || '0', 10);
-  const short = sel && qty !== '' && got < sel.quantityOrdered;
+  const [form, setForm] = useState(null);
+  const queued = queue.filter((q) => q.type === 'delivery');
+  const set = (k) => (v) => setForm((f) => ({ ...f, [k]: v }));
+  const blank = { mode: 'new', source: orders.length ? 'order' : 'none', orderId: null, orderedQty: null, materialType: '', supplierName: '', qty: '', unit: '', date: today(), notes: '', photo: null };
+  const editQueued = (q) => setForm({ mode: 'editQueued', ref: q.clientId, source: q.orderId ? 'order' : 'none', orderId: q.orderId, orderedQty: q.orderedQty, materialType: q.materialType, supplierName: q.supplierName, qty: String(q.quantityReceived), unit: q.unit || '', date: (q.deliveryDate || today()).slice(0, 10), notes: q.notes || '', photo: q.photos?.[0] || null });
+  const editSynced = (d) => setForm({ mode: 'editSynced', ref: d._id, source: d.orderId ? 'order' : 'none', orderId: d.orderId, orderedQty: d.quantityOrdered, materialType: d.materialType, supplierName: d.supplierName, qty: String(d.quantityReceived), unit: d.unit || '', date: (d.deliveryDate || today()).slice(0, 10), notes: d.notes || '', photo: null });
+  const confirmDelete = (target, label) => Alert.alert(t('dl.deleteTitle'), `${label}\n${t('dl.deleteNote')}`, [{ text: t('cancel') || 'Cancel', style: 'cancel' }, { text: t('dl.delete'), style: 'destructive', onPress: () => deleteDelivery(target) }]);
+  const pickOrder = (o) => setForm((f) => ({ ...f, orderId: o._id, orderedQty: o.quantityOrdered, materialType: o.materialType, supplierName: f.supplierName || o.supplierName }));
+  const qty = parseFloat(String(form?.qty || '').replace(',', '.'));
+  const short = form && form.source === 'order' && form.orderedQty != null && form.qty !== '' && qty < form.orderedQty;
+  const valid = form && form.materialType.trim() && form.supplierName.trim() && Number.isFinite(qty) && qty >= 0 && validDate(form.date) && (form.source !== 'order' || form.orderId || form.mode !== 'new');
+  const needsPhoto = form && form.mode === 'new' && !form.photo;
+  const submit = () => {
+    if (!valid) return Alert.alert(t('dl.required'));
+    saveDelivery({ ...form, qty, flagged: !!short });
+    setForm(null);
+  };
+
+  if (!form) {
+    const synced = boot.deliveries || [];
+    const Card2 = ({ title, sub, pending, onEdit, onDelete, flagged }) => (
+      <Card style={{ marginBottom: 10, borderLeftWidth: 4, borderLeftColor: flagged ? C.red : pending ? C.yellow : C.green }}>
+        <Text style={{ fontWeight: '700', color: C.ink }}>{title}</Text>
+        <Text style={{ color: C.mute, marginTop: 2 }}>{sub}</Text>
+        {pending && <Text style={{ color: C.mute, fontSize: 12, marginTop: 2 }}>{t('dl.pending')}</Text>}
+        {flagged && <Text style={{ color: C.badfg, marginTop: 4, fontWeight: '600' }}>{t('flag.short')}</Text>}
+        <View style={{ flexDirection: 'row', gap: 20, marginTop: 10 }}>
+          <Pressable onPress={onEdit} hitSlop={8}><Text style={{ color: C.dark ? C.yellow : '#0F1E38', fontWeight: '700' }}>{t('dl.edit')}</Text></Pressable>
+          <Pressable onPress={onDelete} hitSlop={8}><Text style={{ color: C.badfg, fontWeight: '700' }}>{t('dl.delete')}</Text></Pressable>
+        </View>
+      </Card>
+    );
+    return (
+      <View style={{ flex: 1 }}>
+        <Back onPress={back} title={t('dl.title')} />
+        <Screen>
+          <Button title={t('dl.new')} onPress={() => setForm(blank)} />
+          <Label>{t('dl.list')}</Label>
+          {queued.length + synced.length === 0 && <Text style={{ color: C.mute }}>{t('dl.none')}</Text>}
+          {queued.map((q) => <Card2 key={q.clientId} pending flagged={q.flagged} title={q.materialType} sub={`${q.quantityReceived} ${q.unit || ''} · ${q.supplierName} · ${(q.deliveryDate || '').slice(0, 10)}`} onEdit={() => editQueued(q)} onDelete={() => confirmDelete({ kind: 'queued', id: q.clientId }, q.materialType)} />)}
+          {synced.map((d) => <Card2 key={d._id} pending={d.pending} flagged={d.flagged} title={d.materialType} sub={`${d.quantityReceived} ${d.unit || ''} · ${d.supplierName} · ${String(d.deliveryDate).slice(0, 10)}`} onEdit={() => editSynced(d)} onDelete={() => confirmDelete({ kind: 'synced', id: d._id }, d.materialType)} />)}
+        </Screen>
+      </View>
+    );
+  }
+  const editing = form.mode !== 'new';
   return (
     <View style={{ flex: 1 }}>
-      <Back onPress={back} title={t('del.title')} />
+      <Back onPress={() => setForm(null)} title={editing ? t('dl.editing') : t('dl.new')} />
       <Screen>
-        <Label>{t('del.order')}</Label>
-        {orders.length === 0 && <Text style={{ color: C.mute }}>{t('del.none')}</Text>}
-        {orders.map((o) => (
-          <Pressable key={o._id} onPress={() => setOrder(o._id)} style={{ padding: 14, borderRadius: 12, marginBottom: 8, backgroundColor: C.card, borderWidth: 2, borderColor: order === o._id ? C.yellow : C.line }}>
-            <Text style={{ fontWeight: '700', color: C.ink }}>{o.materialType}</Text>
-            <Text style={{ color: C.mute }}>{o.supplierName} · {t('del.ordered')} {o.quantityOrdered}</Text>
-          </Pressable>
-        ))}
-        {!!sel && (<>
-          <Label>{t('del.qty')}</Label>
-          <TextInput value={qty} onChangeText={(x) => setQty(x.replace(/[^0-9]/g, ''))} keyboardType="number-pad" placeholder={`${sel.quantityOrdered}`} placeholderTextColor={C.mute} style={[inp, { fontSize: 22 }]} />
-          {short && (
-            <View style={{ backgroundColor: C.badbg, borderRadius: 10, padding: 12, marginTop: 10 }}>
-              <Text style={{ color: C.badfg, fontWeight: '700' }}>{sel.quantityOrdered - got} {t('del.short')}</Text>
-              <Text style={{ color: C.badfg }}>{t('del.warn')}</Text>
-            </View>
-          )}
-          <Label>{t('del.photo')}</Label>
-          <PhotoBox uri={photo} label={t('del.take')} onPress={() => snapInto(t, setPhoto)} />
-          <View style={{ height: 16 }} />
-          <Button title={t('del.save')} disabled={!photo || qty === ''} onPress={() => save({ type: 'delivery', orderId: sel._id, quantityReceived: got, photos: [photo], flagged: short, title: sel.materialType, detail: `${got} ${t('del.detail')} ${sel.quantityOrdered} · ${sel.supplierName}` })} />
-          {(!photo || qty === '') && <Hint>{t('hint.delivery')}</Hint>}
+        {!editing && orders.length > 0 && (
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
+            <Chip text={t('dl.fromOrder')} on={form.source === 'order'} onPress={() => setForm({ ...form, source: 'order' })} />
+            <Chip text={t('dl.noOrder')} on={form.source === 'none'} onPress={() => setForm({ ...form, source: 'none', orderId: null, orderedQty: null })} />
+          </View>
+        )}
+        {form.source === 'order' && !editing && (<>
+          <Label>{t('del.order')}</Label>
+          {orders.map((o) => (
+            <Pressable key={o._id} onPress={() => pickOrder(o)} style={{ padding: 14, borderRadius: 12, marginBottom: 8, backgroundColor: C.card, borderWidth: 2, borderColor: form.orderId === o._id ? C.yellow : C.line }}>
+              <Text style={{ fontWeight: '700', color: C.ink }}>{o.materialType}</Text>
+              <Text style={{ color: C.mute }}>{o.supplierName} · {t('del.ordered')} {o.quantityOrdered}</Text>
+            </Pressable>))}
         </>)}
+        {(form.source === 'none' || editing) && (<>
+          <Label>{t('dl.material')}</Label>
+          <TextInput value={form.materialType} onChangeText={set('materialType')} editable={!(editing && form.orderId)} style={[inp, editing && form.orderId && { opacity: 0.6 }]} />
+        </>)}
+        <Label>{t('dl.supplier')}</Label>
+        <TextInput value={form.supplierName} onChangeText={set('supplierName')} style={inp} />
+        <Label>{t('del.qty')}</Label>
+        <TextInput value={form.qty} onChangeText={(x) => set('qty')(x.replace(/[^0-9.,]/g, ''))} keyboardType="decimal-pad" placeholder={form.orderedQty != null ? `${form.orderedQty}` : '0'} placeholderTextColor={C.mute} style={[inp, { fontSize: 20 }]} />
+        {short && (
+          <View style={{ backgroundColor: C.badbg, borderRadius: 10, padding: 12, marginTop: 10 }}>
+            <Text style={{ color: C.badfg, fontWeight: '700' }}>{form.orderedQty - qty} {t('del.short')}</Text>
+            <Text style={{ color: C.badfg }}>{t('del.warn')}</Text>
+          </View>
+        )}
+        <Label>{t('dl.unit')}</Label>
+        <TextInput value={form.unit} onChangeText={set('unit')} style={inp} />
+        <Label>{t('dl.date')}</Label>
+        <TextInput value={form.date} onChangeText={set('date')} keyboardType="numbers-and-punctuation" style={inp} />
+        <Label>{t('dl.notes')}</Label>
+        <TextInput value={form.notes} onChangeText={set('notes')} multiline style={[inp, { minHeight: 56 }]} />
+        <Label>{t('dl.photoReq')}</Label>
+        <PhotoBox uri={form.photo} label={t('del.take')} onPress={() => snapInto(t, set('photo'))} />
+        <View style={{ height: 16 }} />
+        <Button title={editing ? t('dl.update') : t('del.save')} disabled={!valid || needsPhoto} onPress={submit} />
+        {(!valid || needsPhoto) && <Hint>{t('dl.required')}</Hint>}
+        <View style={{ height: 8 }} /><Button title={t('dl.back')} kind="ghost" onPress={() => setForm(null)} />
       </Screen>
     </View>
   );
@@ -239,15 +362,14 @@ export function Report({ boot, back, save }) {
   const [orders, setOrders] = useState('');
   const [cash, setCash] = useState({ open: '', exp: '' });
   const [photos, setPhotos] = useState([]);
+  const [videos, setVideos] = useState([]);
   const [pick, setPick] = useState(null);
   const upd = (set, i, patch) => set((l) => l.map((x, j) => (j === i ? { ...x, ...patch } : x)));
   const del = (set, i) => set((l) => l.filter((_, j) => j !== i));
   const workers = Object.values(crew).reduce((a, b) => a + b, 0);
 
   const Picker = ({ kind, children }) => (
-    <View>
-      <Pressable onPress={() => setPick(pick === kind ? null : kind)} style={{ marginTop: 8 }}><Text style={{ color: C.dark ? C.yellow : '#0F1E38', fontWeight: '700' }}>＋ {children}</Text></Pressable>
-    </View>
+    <Pressable onPress={() => setPick(pick === kind ? null : kind)} style={{ marginTop: 8 }}><Text style={{ color: C.dark ? C.yellow : '#0F1E38', fontWeight: '700' }}>＋ {children}</Text></Pressable>
   );
   const itemChips = (onAdd) => (
     <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 8 }}>
@@ -255,18 +377,24 @@ export function Report({ boot, back, save }) {
       <Chip text={t('rep.newitem')} on onPress={() => { onAdd(''); setPick(null); }} />
     </View>
   );
+  const addVideo = async () => {
+    const r = await takeVideo();
+    if (r?.denied) Alert.alert(t('cam.denied')); else if (r?.tooBig) Alert.alert(t('rep.videobig')); else if (r?.error) Alert.alert(t('cam.error'), r.error); else if (r) setVideos((v) => [...v, r.uri]);
+  };
 
   const submit = () => {
+    const bad = work.find((w) => w.pct !== '' && !(parseFloat(String(w.pct).replace(',', '.')) >= 0 && parseFloat(String(w.pct).replace(',', '.')) <= 100));
+    if (bad) return Alert.alert(t('rep.pcterr'));
     const payload = {
       date: new Date().toISOString(), objectives, tomorrowPlan: tomorrow, ordersNote: orders,
-      workPerformed: work.filter((w) => toNum(w.quantity) > 0).map((w) => ({ taskId: w.taskId, taskName: w.taskName, unit: w.unit, quantity: toNum(w.quantity) })),
+      workPerformed: work.filter((w) => toNum(w.quantity) > 0 || w.pct !== '').map((w) => ({ taskId: w.taskId, taskName: w.taskName, unit: w.unit, quantity: toNum(w.quantity), progressPct: w.pct === '' ? undefined : toNum(w.pct) })),
       workforce: cats.map((c) => ({ category: c.name, count: crew[c.name] || 0 })).filter((w) => w.count > 0),
       materialsUsed: equip.filter((e) => e.materialType.trim() && toNum(e.quantity) > 0).map((e) => ({ materialType: e.materialType.trim(), quantity: toNum(e.quantity) })),
       stockMovements: moves.filter((m) => m.materialType.trim() && toNum(m.quantity) > 0).map((m) => ({ materialType: m.materialType.trim(), kind: m.kind, quantity: toNum(m.quantity), party: m.party })),
       difficulties: diffs.filter((d) => d.issue.trim()),
       siteCash: cash.open !== '' || cash.exp !== '' ? { opening: toNum(cash.open), expenses: toNum(cash.exp) } : undefined,
     };
-    save({ type: 'report', payload, photos, title: `${t('rep.item.report')} ${new Date().toLocaleDateString()}`, detail: `${payload.workPerformed.length} ${t('rep.tasks')} · ${workers} ${t('workers')}` });
+    save({ type: 'report', payload, photos, videos, title: `${t('rep.item.report')} ${new Date().toLocaleDateString()}`, detail: `${payload.workPerformed.length} ${t('rep.tasks')} · ${workers} ${t('workers')}` });
   };
   const empty = work.length === 0 && !objectives && !tomorrow && diffs.length === 0 && moves.length === 0;
 
@@ -277,18 +405,20 @@ export function Report({ boot, back, save }) {
         <Section title={t('rep.work')}>
           {tasks.length === 0 && <Text style={{ color: C.mute }}>{t('rep.none.tasks')}</Text>}
           {work.map((w, i) => (
-            <View key={w.taskId} style={{ marginTop: 10 }}>
+            <View key={w.taskId} style={{ marginTop: 12 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center' }}><Text style={{ flex: 1, color: C.ink, fontWeight: '600' }}>{w.taskName}</Text><Remove onPress={() => del(setWork, i)} /></View>
+              <Text style={{ color: C.mute, fontSize: 12 }}>{t('rep.now')}: {Math.round(w.current)}%</Text>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 }}>
-                <TextInput value={w.quantity} onChangeText={(x) => upd(setWork, i, { quantity: x })} keyboardType="decimal-pad" placeholder={t('rep.qty')} placeholderTextColor={C.mute} style={[inp, { flex: 1 }]} />
-                <Text style={{ color: C.mute, width: 60 }}>{w.unit}</Text>
+                <TextInput value={w.quantity} onChangeText={(x) => upd(setWork, i, { quantity: x })} keyboardType="decimal-pad" placeholder={`${t('rep.qty')} (${w.unit})`} placeholderTextColor={C.mute} style={[inp, { flex: 1 }]} />
+                <TextInput value={w.pct} onChangeText={(x) => upd(setWork, i, { pct: x.replace(/[^0-9.,]/g, '') })} keyboardType="decimal-pad" placeholder="%" placeholderTextColor={C.mute} style={[inp, { width: 78 }]} accessibilityLabel={t('rep.pct')} />
               </View>
             </View>
           ))}
+          {work.length > 0 && <Text style={{ color: C.mute, fontSize: 12, marginTop: 8 }}>{t('rep.pcthint')}</Text>}
           {tasks.length > 0 && <Picker kind="task">{t('rep.addtask')}</Picker>}
           {pick === 'task' && <View style={{ marginTop: 8 }}>{tasks.filter((x) => !work.some((w) => w.taskId === x._id)).map((x) => (
-            <Pressable key={x._id} onPress={() => { setWork([...work, { taskId: x._id, taskName: x.name, unit: x.unit, quantity: '' }]); setPick(null); }} style={{ paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: C.line }}>
-              <Text style={{ color: C.ink }}>{x.name}</Text><Text style={{ color: C.mute, fontSize: 12 }}>{x.category} · {Math.round(x.progressPct)}%</Text>
+            <Pressable key={x._id} onPress={() => { setWork([...work, { taskId: x._id, taskName: x.name, unit: x.unit, quantity: '', pct: '', current: x.progressPct }]); setPick(null); }} style={{ paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: C.line }}>
+              <Text style={{ color: C.ink }}>{x.name}</Text><Text style={{ color: C.mute, fontSize: 12 }}>{x.category} · {Math.round(x.progressPct)}%{x.reportedPct != null ? ` (${t('rep.now')}: ${Math.round(x.calculatedPct)}% calc.)` : ''}</Text>
             </Pressable>))}</View>}
           <Label>{t('rep.obj')}</Label>
           <TextInput value={objectives} onChangeText={setObjectives} multiline style={[inp, { minHeight: 60 }]} />
@@ -350,6 +480,10 @@ export function Report({ boot, back, save }) {
 
         <Section title={t('rep.photos')}>
           <View style={{ marginTop: 8 }}><PhotoStrip uris={photos} label={t('rep.addphoto')} onAdd={() => snapInto(t, (u) => setPhotos((p) => [...p, u]))} onRemove={(i) => setPhotos((p) => p.filter((_, j) => j !== i))} /></View>
+        </Section>
+        <Section title={t('rep.video')}>
+          {videos.map((v, i) => <View key={v} style={{ flexDirection: 'row', alignItems: 'center', marginTop: 8 }}><Text style={{ flex: 1, color: C.ink }}>🎬 {t('rep.ok')} ({i + 1})</Text><Remove onPress={() => setVideos((l) => l.filter((_, j) => j !== i))} /></View>)}
+          {videos.length < 2 && <Pressable onPress={addVideo} style={{ marginTop: 10 }}><Text style={{ color: C.dark ? C.yellow : '#0F1E38', fontWeight: '700' }}>＋ {t('rep.addvideo')}</Text></Pressable>}
         </Section>
         <View style={{ height: 16 }} />
         <Button title={t('rep.save')} disabled={empty} onPress={submit} />

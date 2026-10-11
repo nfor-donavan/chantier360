@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { NavLink, Link, useLocation } from 'react-router-dom';
-import { LayoutDashboard, HardHat, PackageCheck, Users, BellRing, LogOut, Sun, Moon, FileText, ShieldCheck } from 'lucide-react';
+import { LayoutDashboard, HardHat, PackageCheck, Users, BellRing, LogOut, Sun, Moon, FileText, ShieldCheck, Wallet, Building2 } from 'lucide-react';
 import { useStore } from '../store.jsx';
 import { api } from '../api.js';
 import { roleName } from '../utils.js';
@@ -21,8 +21,8 @@ export function Toggles() {
 
 const nav = [
   ['/', 'overview', LayoutDashboard, () => true], ['/projects', 'projects', HardHat, (c) => c('VIEW_PROGRESS')], ['/materials', 'materials', PackageCheck, (c) => c('VIEW_MATERIALS')],
-  ['/attendance', 'attendance', Users, (c) => c('VIEW_ATTENDANCE') || c('APPROVE_ATTENDANCE')], ['/reports', 'reports', FileText, (c) => c('VIEW_REPORTS')],
-  ['/alerts', 'alerts', BellRing, (c) => c('VIEW_ALERTS')], ['/access', 'access', ShieldCheck, (c) => c('MANAGE_USERS')],
+  ['/attendance', 'attendance', Users, (c) => c('VIEW_ATTENDANCE') || c('APPROVE_ATTENDANCE')], ['/reports', 'reports', FileText, (c) => c('VIEW_REPORTS')], ['/expenses', 'expenses', Wallet, (c) => c('VIEW_EXPENSES')],
+  ['/alerts', 'alerts', BellRing, (c) => c('VIEW_ALERTS')], ['/access', 'access', ShieldCheck, (c) => c('MANAGE_USERS')], ['/company', 'company', Building2, (c) => c('MANAGE_COMPANY')],
 ];
 
 export default function Layout({ children }) {
@@ -52,7 +52,7 @@ export default function Layout({ children }) {
       <main className="main">
         <header className="top">
           <h1>{t('title.' + key) === 'title.' + key ? 'Chantier360' : t('title.' + key)}</h1>
-          <div className="tenant"><span className="dot" /> {user.tenant?.companyName} · Cameroon</div>
+          <div className="tenant">{user.tenant?.logoUrl ? <img className="tenant-logo" src={user.tenant.logoUrl} alt="" /> : <span className="dot" />}<b>{user.tenant?.companyName}</b></div>
         </header>
         <div className="content">{children}</div>
       </main>
@@ -66,7 +66,7 @@ export function PortalLayout({ children }) {
   return (
     <div className="portal">
       <header className="portal-top">
-        <Link to="/" className="portal-brand"><img src="/logo.png" alt="" /><div><b>Chantier360</b><span>{user.tenant?.companyName}</span></div></Link>
+        <Link to="/" className="portal-brand">{user.tenant?.logoUrl ? <img className="portal-logo" src={user.tenant.logoUrl} alt="" /> : <img src="/logo.png" alt="" />}<div><b>{user.tenant?.companyName}</b><span>Chantier360</span></div></Link>
         <div className="portal-tools"><Toggles /><span className="portal-user">{user.name}</span><button className="ghost slim" onClick={logout}><LogOut size={15} /> {t('signout')}</button></div>
       </header>
       <div className="portal-body">{children}</div>
