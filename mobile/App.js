@@ -5,7 +5,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import NetInfo from '@react-native-community/netinfo';
 import { api, setToken } from './src/api';
 import { AppCtx, DARK, LIGHT, makeT } from './src/ctx';
-import { Attendance, Delivery, Home, Login, PhotoScreen, Report, Sync } from './src/screens';
+import { Attendance, Delivery, Home, Login, PhotoScreen, Report, Sync, Weekly } from './src/screens';
 
 const uid = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`; // client-side id so retries never duplicate
 const save = (k, v) => AsyncStorage.setItem(k, JSON.stringify(v)).catch(() => {});
@@ -17,16 +17,17 @@ const migrate = (i) => ({ ...i, photos: i.photos || (i.photoUri ? [i.photoUri] :
 // What the server holds, plus the changes still waiting on this phone. The queue is the only place unsynced changes live,
 // so a refresh from the server can never wipe them out.
 function overlay(boot, queue) {
-  let workers = [...boot.workers], deliveries = [...boot.deliveries];
+  let workers = [...boot.workers], deliveries = [...boot.deliveries], categories = [...boot.categories];
   [...queue].reverse().forEach((q) => { // oldest first
+    if (q.type === 'category_add' && !categories.some((c) => nameKey(c.name) === nameKey(q.name))) categories.push({ _id: `pending-${q.clientId}`, name: q.name, pending: true });
     if (q.type === 'worker_add' && !workers.some((w) => w.uid === q.uid)) workers.push({ uid: q.uid, name: q.name, category: q.category, pending: true });
     if (q.type === 'worker_remove') workers = workers.filter((w) => w.uid !== q.uid);
     if (q.type === 'delivery_edit') deliveries = deliveries.map((d) => (d._id === q.logId ? { ...d, ...q.fields, pending: true } : d));
     if (q.type === 'delivery_delete') deliveries = deliveries.filter((d) => d._id !== q.logId);
   });
-  const order = boot.categories.map((c) => c.name);
+  const order = categories.map((c) => c.name);
   workers.sort((a, b) => order.indexOf(a.category) - order.indexOf(b.category) || a.name.localeCompare(b.name));
-  return { ...boot, workers, deliveries };
+  return { ...boot, workers, deliveries, categories };
 }
 
 // How each kind of record is sent to POST /api/sync.
@@ -34,6 +35,7 @@ const toPayload = (w) => {
   const base = { clientId: w.clientId, createdAt: w.createdAt };
   const url = w.photoUrls?.[0];
   switch (w.type) {
+    case 'category_add': return ['categories', { ...base, name: w.name }];
     case 'worker_add': return ['workers', { clientId: w.uid, uid: w.uid, name: w.name, category: w.category }];
     case 'worker_remove': return ['workerRemovals', { ...base, uid: w.uid }];
     case 'delivery': return ['materialLogs', { ...base, orderId: w.orderId, materialType: w.materialType, supplierName: w.supplierName, quantityReceived: w.quantityReceived, unit: w.unit, deliveryDate: w.deliveryDate, notes: w.notes, deliveryNotePhotoUrl: url }];
@@ -117,7 +119,7 @@ export default function App() {
         work.push(it);
       }
       if (work.length) {
-        const body = { workers: [], materialLogs: [], deliveryEdits: [], deliveryDeletes: [], attendanceLogs: [], workerRemovals: [], reports: [], photos: [] };
+        const body = { categories: [], workers: [], materialLogs: [], deliveryEdits: [], deliveryDeletes: [], attendanceLogs: [], workerRemovals: [], reports: [], photos: [] };
         work.forEach((w) => { const [key, payload] = toPayload(w); body[key].push(payload); });
         const res = await api.sync(body);
         const results = Object.fromEntries(Object.values(res).flat().map((r) => [r.clientId, r]));
@@ -146,6 +148,15 @@ export default function App() {
     enqueue(item);
     setScreen('home');
     Alert.alert(t('saved.title'), online ? t('saved.online') : t('saved.offline'));
+  };
+
+  // A category is shared by the whole company. It is queued like everything else and created before the workers that use it.
+  const addCategory = (name) => {
+    const n = String(name || '').trim().replace(/\s+/g, ' ');
+    if (n.length < 2) return { error: 'cat.short' };
+    if (view.categories.some((c) => nameKey(c.name) === nameKey(n))) return { error: 'cat.dupe' };
+    enqueue({ type: 'category_add', name: n, title: n, detail: 'category' });
+    return { ok: true, name: n };
   };
 
   // ----- Workforce: registering a worker is separate from attendance. Removing only marks them inactive on the server.
@@ -191,9 +202,10 @@ export default function App() {
       {!session ? <Login onLogin={doLogin} busy={busy} error={loginError} /> : (
         <View style={{ flex: 1 }}>
           {screen === 'home' && <Home user={session.user} company={view.company || session.user.tenant} online={online} forceOffline={forceOffline} setForceOffline={setForceOffline} pending={pendingCount} syncing={syncing} history={history} go={setScreen} onLogout={logout} />}
-          {screen === 'attendance' && <Attendance boot={view} back={back} save={saveRecord} addWorker={addWorker} removeWorker={removeWorker} />}
+          {screen === 'attendance' && <Attendance boot={view} back={back} save={saveRecord} addWorker={addWorker} removeWorker={removeWorker} addCategory={addCategory} />}
           {screen === 'delivery' && <Delivery boot={view} orders={availableOrders} queue={queue} back={back} saveDelivery={saveDelivery} deleteDelivery={deleteDelivery} />}
           {screen === 'report' && <Report boot={view} back={back} save={saveRecord} />}
+          {screen === 'weekly' && <Weekly back={back} online={online} />}
           {screen === 'photo' && <PhotoScreen boot={view} back={back} save={saveRecord} />}
           {screen === 'sync' && <Sync back={back} queue={queue} history={history} online={online} syncing={syncing} syncNow={syncNow} remove={(id) => setQueue((p) => p.filter((x) => x.clientId !== id))} />}
         </View>

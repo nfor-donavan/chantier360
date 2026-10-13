@@ -27,6 +27,7 @@ router.get('/bootstrap', can('VIEW_PROGRESS'), wrap(async (req, res) => {
 // Receives everything a phone saved while offline. Every operation carries its own clientId, so resending a batch never repeats it.
 // Order matters: workers are registered before attendance that refers to them, and deliveries are created before they are edited.
 const OPS = [
+  ['categories', 'MANAGE_WORKFORCE', R.createCategory],
   ['workers', 'MANAGE_WORKFORCE', R.createWorker],
   ['materialLogs', 'MANAGE_DELIVERIES', R.createMaterialLog],
   ['deliveryEdits', 'MANAGE_DELIVERIES', R.updateMaterialLog],

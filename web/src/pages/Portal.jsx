@@ -6,7 +6,7 @@ import { api } from '../api.js';
 import { useApi } from '../hooks.js';
 import Gate from '../components/Gate.jsx';
 import { Bar, Lightbox } from '../components/bits.jsx';
-import { fmtDate, num } from '../utils.js';
+import { fmtDate, num, weekEnd } from '../utils.js';
 
 // What the client sees: only what the Director has released. The server decides what is included.
 export function PortalHome() {
@@ -84,7 +84,7 @@ function Detail({ id }) {
           {on.reports && (
             <>
               {weeklyReports.length > 0 && <section className="panel"><h3>{t('po.weekly')}</h3>{weeklyReports.map((w, i) => (
-                <div key={i} className="task-group"><h4>{fmtDate(w.weekStart, lang)} {t('to')} {fmtDate(w.weekEnd, lang)}</h4>
+                <div key={i} className="task-group"><h4>{fmtDate(w.weekStart, lang)} {t('to')} {fmtDate(weekEnd(w.weekStart), lang)}</h4>
                   <table><thead><tr><th>{t('tk.task')}</th><th>{t('tk.unit')}</th><th className="r">{t('tk.total')}</th><th className="r">{t('rt.cum')}</th><th className="r">{t('rt.week.qty')}</th><th className="r">{t('tk.rate')}</th></tr></thead>
                     <tbody>{w.rows.map((r, j) => <tr key={j}><td>{r.name}</td><td>{r.unit}</td><td className="r">{num(r.totalQty)}</td><td className="r">{num(r.cumulativeQty)}</td><td className="r">{num(r.weeklyQty)}</td><td className="r"><b>{Math.round(r.progressPct)}%</b></td></tr>)}</tbody></table></div>))}</section>}
               {dailyReports.length > 0 && <section className="panel"><h3>{t('po.daily')}</h3>{dailyReports.map((r, i) => (

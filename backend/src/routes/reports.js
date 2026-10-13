@@ -2,7 +2,7 @@ const router = require('express').Router();
 const { DailyReport, WeeklyReport, ProjectSite } = require('../models');
 const { can, scoped, assertProject, pickProject } = require('../middleware/auth');
 const { createReport } = require('../services/records');
-const { buildWeek, monday } = require('../services/weekly');
+const { buildWeek, ensureWeek, monday } = require('../services/weekly');
 const { audit } = require('../services/audit');
 const { httpError, wrap } = require('../utils/http');
 const own = require('../utils/populate');
@@ -64,7 +64,7 @@ router.patch('/daily/:id', can('MANAGE_CLIENT_PORTAL'), wrap(async (req, res) =>
 }));
 
 // ---------- Weekly reports ----------
-const summarize = (w) => ({ _id: w._id, siteId: w.siteId, weekStart: w.weekStart, weekEnd: w.weekEnd, status: w.status, clientVisible: w.clientVisible, tasks: w.rows.length,
+const summarize = (w) => ({ _id: w._id, siteId: w.siteId, weekStart: w.weekStart, weekEnd: w.weekEnd, status: w.status, submitted: !!w.submittedAt, clientVisible: w.clientVisible, tasks: w.rows.length,
   avgProgress: w.rows.length ? Math.round((w.rows.reduce((a, r) => a + (r.progressPct || 0), 0) / w.rows.length) * 10) / 10 : 0, reportsCount: w.summary?.reportsCount || 0 });
 router.get('/weekly', can('VIEW_REPORTS'), wrap(async (req, res) => {
   if (req.query.siteId) assertProject(req, req.query.siteId);
@@ -72,8 +72,13 @@ router.get('/weekly', can('VIEW_REPORTS'), wrap(async (req, res) => {
   const list = await WeeklyReport.find(filter).sort({ weekStart: -1 }).limit(100).populate(own(req, 'siteId', 'siteName locationCity')).lean();
   res.json(list.map(summarize));
 }));
-router.get('/weekly/:id', can('VIEW_REPORTS'), wrap(async (req, res) => {
-  const w = await WeeklyReport.findOne({ _id: req.params.id, tenantId: req.user.tenantId, ...scoped(req) }).populate(own(req, 'siteId', 'siteName locationCity')).populate(own(req, 'lockedBy')).lean();
+// The foreman's own weekly report: created automatically from the week's daily reports, refreshed each time he opens it.
+router.get('/weekly/current', can('SUBMIT_WEEKLY_REPORTS', 'MANAGE_WEEKLY_REPORTS'), wrap(async (req, res) => {
+  const siteId = pickProject(req, req.query.siteId);
+  res.json(await ensureWeek(req.user.tenantId, siteId, new Date(), req.user.id));
+}));
+router.get('/weekly/:id', can('VIEW_REPORTS', 'SUBMIT_WEEKLY_REPORTS'), wrap(async (req, res) => {
+  const w = await WeeklyReport.findOne({ _id: req.params.id, tenantId: req.user.tenantId, ...scoped(req) }).populate(own(req, 'siteId', 'siteName locationCity')).populate(own(req, 'lockedBy')).populate(own(req, 'submittedBy')).lean();
   if (!w) throw httpError(404, 'Report not found');
   res.json(w);
 }));
@@ -85,14 +90,13 @@ router.post('/weekly/generate', can('MANAGE_WEEKLY_REPORTS'), wrap(async (req, r
   const weekStart = monday(date);
   const existing = await WeeklyReport.findOne({ tenantId: req.user.tenantId, siteId, weekStart });
   if (existing?.status === 'locked') throw httpError(409, 'This week is locked. Ask the Director to unlock it to refresh.');
-  const built = await buildWeek(req.user.tenantId, siteId, date, existing);
-  if (existing) { existing.set({ rows: built.rows, summary: built.summary, weekEnd: built.weekEnd }); await existing.save(); return res.json(existing); }
-  res.status(201).json(await WeeklyReport.create({ tenantId: req.user.tenantId, siteId, createdBy: req.user.id, ...built }));
+  res.status(existing ? 200 : 201).json(await ensureWeek(req.user.tenantId, siteId, date, req.user.id));
 }));
 const weekly = async (req) => { const w = await WeeklyReport.findOne({ _id: req.params.id, tenantId: req.user.tenantId }); if (!w) throw httpError(404, 'Report not found'); assertProject(req, w.siteId); return w; };
-router.patch('/weekly/:id', can('MANAGE_WEEKLY_REPORTS'), wrap(async (req, res) => {
+router.patch('/weekly/:id', can('MANAGE_WEEKLY_REPORTS', 'SUBMIT_WEEKLY_REPORTS'), wrap(async (req, res) => {
   const w = await weekly(req);
   if (w.status === 'locked') throw httpError(409, 'This report is locked');
+  if (!req.has('MANAGE_WEEKLY_REPORTS') && w.submittedAt) throw httpError(409, 'This report was already sent to the office');
   for (const r of req.body.rows || []) {
     const row = w.rows.find((x) => String(x.taskId) === String(r.taskId));
     if (!row) continue;
@@ -105,6 +109,13 @@ router.patch('/weekly/:id', can('MANAGE_WEEKLY_REPORTS'), wrap(async (req, res) 
   await w.save();
   res.json(w);
 }));
+router.post('/weekly/:id/submit', can('SUBMIT_WEEKLY_REPORTS'), wrap(async (req, res) => {
+  const w = await weekly(req);
+  if (w.status === 'locked') throw httpError(409, 'This report is locked');
+  w.submittedBy = req.user.id; w.submittedAt = new Date(); await w.save();
+  await audit(req.user.tenantId, req.user.id, 'WeeklyReport', w._id, 'submit', w.siteId, null);
+  res.json(summarize(w));
+}));
 router.post('/weekly/:id/lock', can('MANAGE_WEEKLY_REPORTS'), wrap(async (req, res) => {
   const w = await weekly(req);
   w.status = 'locked'; w.lockedBy = req.user.id; w.lockedAt = new Date(); await w.save();
@@ -113,7 +124,7 @@ router.post('/weekly/:id/lock', can('MANAGE_WEEKLY_REPORTS'), wrap(async (req, r
 }));
 router.post('/weekly/:id/unlock', can('MANAGE_PROJECTS'), wrap(async (req, res) => {
   const w = await weekly(req);
-  w.status = 'draft'; w.clientVisible = false; await w.save();
+  w.status = 'draft'; w.clientVisible = false; w.submittedAt = undefined; w.submittedBy = undefined; await w.save();
   await audit(req.user.tenantId, req.user.id, 'WeeklyReport', w._id, 'unlock', w.siteId, null);
   res.json(summarize(w));
 }));

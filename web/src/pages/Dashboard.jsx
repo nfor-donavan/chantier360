@@ -5,7 +5,7 @@ import { useStore } from '../store.jsx';
 import { api } from '../api.js';
 import { useApi } from '../hooks.js';
 import Gate from '../components/Gate.jsx';
-import { fmtDate, fmtXAF, pct } from '../utils.js';
+import { fmtDate, fmtXAF, pct, weekEnd } from '../utils.js';
 import { useNavigate } from 'react-router-dom';
 
 export default function Dashboard() {
@@ -126,7 +126,7 @@ export default function Dashboard() {
               <h3>{t('dash.tblWeekly')} <Link to="/reports?type=weekly">{t('viewall')}</Link></h3>
               <table className="selectable">
                 <thead><tr><th>{t('rt.week')}</th><th>{t('col.site')}</th><th>{t('rt.status')}</th><th className="r">{t('rt.tasks')}</th><th className="r">{t('rt.progress')}</th></tr></thead>
-                <tbody>{d.recentWeekly.map((w) => <tr key={w._id} onClick={() => nav(`/reports?type=weekly&open=${w._id}`)}><td>{fmtDate(w.weekStart, lang)} {t('to')} {fmtDate(w.weekEnd, lang)}</td><td>{w.siteId?.siteName}</td><td><span className={'tag ' + (w.status === 'locked' ? 'ok' : 'neutral')}>{t('rt.' + w.status)}</span></td><td className="r">{w.tasks}</td><td className="r">{w.avgProgress}%</td></tr>)}</tbody>
+                <tbody>{d.recentWeekly.map((w) => <tr key={w._id} onClick={() => nav(`/reports?type=weekly&open=${w._id}`)}><td>{fmtDate(w.weekStart, lang)} {t('to')} {fmtDate(weekEnd(w.weekStart), lang)}</td><td>{w.siteId?.siteName}</td><td><span className={'tag ' + (w.status === 'locked' ? 'ok' : 'neutral')}>{t('rt.' + w.status)}</span></td><td className="r">{w.tasks}</td><td className="r">{w.avgProgress}%</td></tr>)}</tbody>
               </table>
             </section>
           )}

@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, TextInput, Pressable, ScrollView, Image, Switch, Alert, ActivityIndicator } from 'react-native';
 import { Button, Card, Label, PhotoBox, PhotoStrip, takePhoto, takeVideo } from './ui';
 import { useApp, demoForemen } from './ctx';
+import { api } from './api';
 
 const Screen = ({ children }) => {
   const { C } = useApp();
@@ -145,7 +146,7 @@ export function Home({ user, company, online, forceOffline, setForceOffline, pen
         </View>
         <View style={{ flexDirection: 'row', gap: 12, marginTop: 12 }}>
           <Tile icon="🔄" title={t('tile.sync')} sub={t('tile.sync.sub')} to="sync" badge={pending || null} />
-          <View style={{ flex: 1 }} />
+          <Tile icon="📅" title={t('tile.week')} sub={t('tile.week.sub')} to="weekly" />
         </View>
         <Label>{t('recent')}</Label>
         {history.length === 0 && <Text style={{ color: C.mute }}>{t('recent.none')}</Text>}
@@ -158,7 +159,7 @@ export function Home({ user, company, online, forceOffline, setForceOffline, pen
 const snapInto = async (t, add) => { const r = await takePhoto(); if (r?.denied) Alert.alert(t('cam.denied')); else if (r?.error) Alert.alert(t('cam.error'), r.error); else if (r) add(r.uri); };
 
 // Attendance: pick the registered workers who are present. Registering a worker is a separate step, done here or by the Director.
-export function Attendance({ boot, back, save, addWorker, removeWorker }) {
+export function Attendance({ boot, back, save, addWorker, removeWorker, addCategory }) {
   const { C, t } = useApp();
   const inp = useInput();
   const cats = boot.categories || [], workers = boot.workers || [];
@@ -167,6 +168,8 @@ export function Attendance({ boot, back, save, addWorker, removeWorker }) {
   const [photo, setPhoto] = useState(null);
   const [manage, setManage] = useState(workers.length === 0);
   const [nw, setNw] = useState({ name: '', category: null });
+  const [newCat, setNewCat] = useState('');
+  const createCat = () => { const r = addCategory(newCat); if (r.error) return Alert.alert(t(r.error)); setNw((x) => ({ ...x, category: r.name })); setNewCat(''); };
   const toggle = (uid) => setSel((s) => (s.includes(uid) ? s.filter((x) => x !== uid) : [...s, uid]));
   const register = () => {
     const r = addWorker(nw.name, nw.category);
@@ -224,7 +227,12 @@ export function Attendance({ boot, back, save, addWorker, removeWorker }) {
             <Label>{t('wk.category')}</Label>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>{cats.map((c) => <Chip key={c._id} text={c.name} on={nw.category === c.name} onPress={() => setNw({ ...nw, category: c.name })} />)}</View>
             {cats.length === 0 && <Text style={{ color: C.mute }}>{t('cats.none')}</Text>}
-            <View style={{ height: 8 }} />
+            <Text style={{ color: C.mute, fontSize: 12.5, fontWeight: '600', marginTop: 10 }}>{t('cat.new')}</Text>
+            <View style={{ flexDirection: 'row', gap: 8, marginTop: 6 }}>
+              <TextInput value={newCat} onChangeText={setNewCat} placeholder={t('cat.name')} placeholderTextColor={C.mute} style={[inp, { flex: 1 }]} autoCapitalize="sentences" />
+              <Pressable onPress={createCat} style={{ paddingHorizontal: 14, justifyContent: 'center', borderRadius: 10, backgroundColor: C.yellow }}><Text style={{ color: '#0F1E38', fontWeight: '700' }}>＋</Text></Pressable>
+            </View>
+            <View style={{ height: 14 }} />
             <Button title={t('wk.save')} kind="ghost" onPress={register} />
           </Card>
         )}
@@ -536,6 +544,77 @@ export function Sync({ back, queue, history, online, syncing, syncNow, remove })
         ))}
         <Label>{t('sync.sent')} ({history.length})</Label>
         {history.map((h) => <Row key={h.clientId} item={h} />)}
+      </Screen>
+    </View>
+  );
+}
+
+// The weekly report builds itself from the daily reports. The foreman adds planned percentages and reasons, then sends it to the office.
+export function Weekly({ back, online }) {
+  const { C, t, lang } = useApp();
+  const inp = useInput();
+  const [st, setSt] = useState({ loading: true, data: null, error: '' });
+  const [edits, setEdits] = useState({}), [meta, setMeta] = useState({ objectives: '', notes: '' }), [busy, setBusy] = useState(false);
+  const load = async () => {
+    setSt((s) => ({ ...s, loading: true, error: '' }));
+    try { const w = await api.weeklyCurrent(); setSt({ loading: false, data: w, error: '' }); setMeta({ objectives: w.objectives || '', notes: w.notes || '' }); setEdits({}); }
+    catch (e) { setSt({ loading: false, data: null, error: e.network ? 'network' : e.message }); }
+  };
+  useEffect(() => { if (online) load(); else setSt({ loading: false, data: null, error: 'offline' }); }, [online]); // eslint-disable-line
+  const w = st.data;
+  const editable = w && w.status === 'draft' && !w.submittedAt;
+  const val = (r, k) => (edits[r.taskId]?.[k] !== undefined ? edits[r.taskId][k] : r[k] != null ? String(r[k]) : '');
+  const set = (taskId, k, v) => setEdits((e) => ({ ...e, [taskId]: { ...e[taskId], [k]: v } }));
+  const pctOk = () => Object.values(edits).every((e) => e.plannedPct === undefined || e.plannedPct === '' || (Number(e.plannedPct) >= 0 && Number(e.plannedPct) <= 100));
+  const save = async (then) => {
+    if (!pctOk()) return Alert.alert(t('wr.pcterr'));
+    setBusy(true);
+    try { await api.updateWeekly(w._id, { rows: Object.entries(edits).map(([taskId, v]) => ({ taskId, ...v })), objectives: meta.objectives, notes: meta.notes }); if (then) await then(); else Alert.alert(t('wr.saved')); await load(); }
+    catch (e) { Alert.alert(e.network ? t('err.network') : e.message); }
+    setBusy(false);
+  };
+  const submit = () => Alert.alert(t('wr.submit'), t('wr.confirm'), [{ text: t('cancel'), style: 'cancel' }, { text: t('wr.submit'), onPress: () => save(() => api.submitWeekly(w._id)) }]);
+  const end = w && new Date(+new Date(w.weekStart) + 5 * 864e5);
+  const fmtD = (d) => new Date(d).toLocaleDateString(lang === 'fr' ? 'fr-FR' : 'en-GB', { day: 'numeric', month: 'short' });
+  return (
+    <View style={{ flex: 1 }}>
+      <Back onPress={back} title={t('wr.title')} />
+      <Screen>
+        {st.loading && <ActivityIndicator color={C.yellow} style={{ marginTop: 30 }} />}
+        {!st.loading && st.error === 'offline' && <Text style={{ color: C.mute }}>{t('wr.offline')}</Text>}
+        {!st.loading && !!st.error && st.error !== 'offline' && <View><Text style={{ color: C.badfg }}>{st.error === 'network' ? t('err.network') : st.error}</Text><View style={{ height: 10 }} /><Button title={t('wr.reload')} kind="ghost" onPress={load} /></View>}
+        {w && (<>
+          <Card>
+            <Text style={{ color: C.ink, fontWeight: '800', fontSize: 17 }}>{fmtD(w.weekStart)} – {fmtD(end)}</Text>
+            <Text style={{ color: C.mute }}>{t('wr.period')}</Text>
+            <Text style={{ color: C.mute, marginTop: 8, fontSize: 13 }}>{t('wr.auto')}</Text>
+            {w.status === 'locked' && <Text style={{ color: C.green, fontWeight: '700', marginTop: 8 }}>{t('wr.locked')}</Text>}
+            {w.status !== 'locked' && w.submittedAt && <Text style={{ color: C.green, fontWeight: '700', marginTop: 8 }}>{t('wr.submitted')}</Text>}
+          </Card>
+          {w.rows.map((r) => (
+            <Card key={r.taskId} style={{ marginTop: 12 }}>
+              <Text style={{ color: C.ink, fontWeight: '700' }}>{r.name}</Text>
+              {!!r.subcontractor && <Text style={{ color: C.mute, fontSize: 12 }}>{r.subcontractor}</Text>}
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 8 }}>
+                <Text style={{ color: C.mute }}>{t('wr.executed')}: <Text style={{ color: C.ink, fontWeight: '700' }}>{r.weeklyQty} {r.unit}</Text></Text>
+                <Text style={{ color: C.mute }}>{t('wr.progress')}: <Text style={{ color: C.ink, fontWeight: '700' }}>{Math.round(r.progressPct)}%</Text></Text>
+              </View>
+              <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
+                <View style={{ width: 90 }}><Text style={{ color: C.mute, fontSize: 12 }}>{t('wr.planned')}</Text><TextInput editable={editable} value={val(r, 'plannedPct')} onChangeText={(x) => set(r.taskId, 'plannedPct', x.replace(/[^0-9.]/g, ''))} keyboardType="decimal-pad" style={[inp, !editable && { opacity: 0.6 }]} /></View>
+                <View style={{ flex: 1 }}><Text style={{ color: C.mute, fontSize: 12 }}>{t('wr.reason')}</Text><TextInput editable={editable} value={val(r, 'delayReason')} onChangeText={(x) => set(r.taskId, 'delayReason', x)} style={[inp, !editable && { opacity: 0.6 }]} /></View>
+              </View>
+              <Text style={{ color: C.mute, fontSize: 12, marginTop: 8 }}>{t('wr.obs')}</Text>
+              <TextInput editable={editable} value={val(r, 'observation')} onChangeText={(x) => set(r.taskId, 'observation', x)} style={[inp, !editable && { opacity: 0.6 }]} />
+            </Card>
+          ))}
+          <Card style={{ marginTop: 12 }}>
+            <Text style={{ color: C.mute, fontSize: 12 }}>{t('wr.objectives')}</Text>
+            <TextInput editable={editable} value={meta.objectives} onChangeText={(x) => setMeta({ ...meta, objectives: x })} multiline style={[inp, { minHeight: 56 }, !editable && { opacity: 0.6 }]} />
+            <Text style={{ color: C.mute, fontSize: 12, marginTop: 10 }}>{t('wr.notes')}</Text>
+            <TextInput editable={editable} value={meta.notes} onChangeText={(x) => setMeta({ ...meta, notes: x })} multiline style={[inp, { minHeight: 56 }, !editable && { opacity: 0.6 }]} />
+          </Card>
+          {editable && (<><View style={{ height: 14 }} /><Button title={t('wr.save')} kind="ghost" disabled={busy} onPress={() => save()} /><View style={{ height: 10 }} /><Button title={t('wr.submit')} disabled={busy} onPress={submit} /></>)}
+        </>)}
       </Screen>
     </View>
   );

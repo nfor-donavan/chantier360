@@ -148,7 +148,7 @@ const weeklySchema = new Schema({
   rows: [new Schema({ taskId: ref('Task'), subcontractor: String, phase: String, category: String, name: String, unit: String, totalQty: Number, cumulativeQty: Number, weeklyQty: Number,
     progressPct: Number, calculatedPct: Number, reportedPct: Number, plannedPct: Number, delayReason: String, observation: String }, { _id: false })],
   summary: Schema.Types.Mixed, objectives: String, notes: String,
-  createdBy: ref('User'), lockedBy: ref('User'), lockedAt: Date, clientVisible: { type: Boolean, default: false },
+  createdBy: ref('User'), submittedBy: ref('User'), submittedAt: Date, lockedBy: ref('User'), lockedAt: Date, clientVisible: { type: Boolean, default: false },
 }, { timestamps: true });
 weeklySchema.index({ tenantId: 1, siteId: 1, weekStart: 1 }, { unique: true });
 const WeeklyReport = scoped('WeeklyReport', weeklySchema);

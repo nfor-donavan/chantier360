@@ -224,3 +224,10 @@ table.selectable tbody tr{cursor:pointer}table.selectable tbody tr:hover td{back
 .lbl{display:block;font-size:13px;font-weight:500;margin-top:10px}
 .logo-edit{display:flex;gap:16px;align-items:center;margin-top:8px;flex-wrap:wrap}
 .logo-box{width:120px;height:120px;border:1px dashed var(--inputline);border-radius:10px;display:grid;place-items:center;background:#fff}.logo-box img{max-width:100%;max-height:100%;object-fit:contain}
+
+/* sidebar scrolls when there are many menu items; sign out lives in the top bar */
+.side{overflow:hidden}.side nav{flex:1 1 auto;min-height:0;overflow-y:auto;padding-right:2px}.side-foot{flex:none}
+.top-actions{display:flex;align-items:center;gap:18px;flex-wrap:wrap;justify-content:flex-end}
+.signout{display:inline-flex;align-items:center;gap:8px;background:var(--card);color:var(--ink);border:1px solid var(--inputline);border-radius:8px;padding:8px 14px;font-size:13px;font-weight:500}
+.signout:hover{border-color:var(--red);color:var(--badfg)}
+@media(max-width:820px){.top{flex-wrap:wrap;gap:8px}.top-actions{width:100%;justify-content:space-between}}

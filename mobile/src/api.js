@@ -21,6 +21,9 @@ export const api = {
   login: (email, password) => call('/auth/login', { method: 'POST', body: { email, password } }),
   bootstrap: () => call('/sync/bootstrap'),
   sync: (payload) => call('/sync', { method: 'POST', body: payload }),
+  weeklyCurrent: () => call('/reports/weekly/current'),
+  updateWeekly: (id, body) => call(`/reports/weekly/${id}`, { method: 'PATCH', body }),
+  submitWeekly: (id) => call(`/reports/weekly/${id}/submit`, { method: 'POST', body: {} }),
   uploadVideo: (uri) => { const form = new FormData(); form.append('video', { uri, name: 'video.mp4', type: 'video/mp4' }); return call('/uploads/video', { method: 'POST', form }, 300000); },
   upload: (uri) => { const form = new FormData(); form.append('photo', { uri, name: 'photo.jpg', type: 'image/jpeg' }); return call('/uploads', { method: 'POST', form }); },
 };

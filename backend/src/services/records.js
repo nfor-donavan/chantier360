@@ -5,6 +5,7 @@ const discrepancy = require('./discrepancy');
 const { recomputeProgress, weekKey } = require('./progress');
 const { stockSummary } = require('./stock');
 const { audit } = require('./audit');
+const { ensureWeek } = require('./weekly');
 
 const num = (v, name) => { const n = Number(v); if (!Number.isFinite(n) || n < 0) throw httpError(400, `${name} must be a number of 0 or more`); return n; };
 const getSite = async (tenantId, siteId) => { const s = await ProjectSite.findOne({ _id: siteId, tenantId }); if (!s) throw httpError(404, 'Project not found'); return s; };
@@ -47,6 +48,16 @@ async function removeWorker({ tenantId, userId, siteId, data }) {
   await w.save();
   await audit(tenantId, userId, 'Worker', w.uid, 'remove', siteId, { name: w.name, category: w.category });
   return w;
+}
+
+// Categories are shared by the whole company. Adding one that already exists (ignoring case and accents) just returns the existing one.
+async function createCategory({ tenantId, data }) {
+  const name = String(data.name || '').trim().replace(/\s+/g, ' ');
+  if (name.length < 2 || name.length > 40) throw httpError(400, 'Enter a category name (2 to 40 characters)');
+  const list = await WorkforceCategory.find({ tenantId }).lean();
+  const hit = list.find((c) => nameKey(c.name) === nameKey(name));
+  if (hit) return hit;
+  return WorkforceCategory.create({ tenantId, name, order: list.reduce((m, c) => Math.max(m, c.order || 0), 0) + 1 });
 }
 
 // ---------- Deliveries ----------
@@ -201,6 +212,7 @@ async function createReport({ tenantId, userId, siteId, data, createdAt, skipEff
   if (work.length) await recomputeProgress(tenantId, siteId);
   // Equipment and materials "used" is a record only. Stock changes come from the explicit entries and exits.
   for (const m of doc.stockMovements) await StockEntry.create({ tenantId, siteId, materialType: m.materialType, kind: m.kind, quantity: m.quantity, party: m.party, source: 'report', refId: String(doc._id), date });
+  await ensureWeek(tenantId, siteId, date, userId).catch(() => {}); // the weekly report builds and refreshes itself; a failure here never blocks the daily report
   return doc;
 }
-module.exports = { createWorker, updateWorker, removeWorker, createMaterialLog, updateMaterialLog, deleteMaterialLog, createAttendance, createPhoto, createReport };
+module.exports = { createCategory, createWorker, updateWorker, removeWorker, createMaterialLog, updateMaterialLog, deleteMaterialLog, createAttendance, createPhoto, createReport };

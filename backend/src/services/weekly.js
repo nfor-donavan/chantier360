@@ -1,4 +1,4 @@
-const { Task, DailyReport, AttendanceLog, MaterialLog, StockEntry } = require('../models');
+const { Task, DailyReport, AttendanceLog, MaterialLog, StockEntry, WeeklyReport } = require('../models');
 const { pctOf, calcPct, round1 } = require('./progress');
 
 const monday = (d) => { const x = new Date(d); x.setUTCHours(0, 0, 0, 0); const day = x.getUTCDay() || 7; x.setUTCDate(x.getUTCDate() - (day - 1)); return x; };
@@ -36,6 +36,15 @@ async function buildWeek(tenantId, siteId, anyDateInWeek, existing = null) {
     difficulties: reports.flatMap((r) => (r.difficulties || []).map((d) => ({ date: r.date, issue: d.issue, solution: d.solution }))),
     mediaCount: reports.reduce((n, r) => n + (r.media || []).length, 0),
   };
-  return { weekStart: a, weekEnd: new Date(+b - 864e5), rows, summary };
+  return { weekStart: a, weekEnd: new Date(+a + 5 * 864e5), rows, summary }; // the working week is Monday to Saturday
 }
-module.exports = { buildWeek, monday };
+// Creates the week's report the first time it is needed and keeps a draft up to date. A locked report is never touched.
+async function ensureWeek(tenantId, siteId, date, userId) {
+  const weekStart = monday(date);
+  const existing = await WeeklyReport.findOne({ tenantId, siteId, weekStart });
+  if (existing?.status === 'locked') return existing;
+  const built = await buildWeek(tenantId, siteId, date, existing);
+  if (existing) { existing.set({ rows: built.rows, summary: built.summary, weekEnd: built.weekEnd }); await existing.save(); return existing; }
+  return WeeklyReport.create({ tenantId, siteId, createdBy: userId, ...built });
+}
+module.exports = { buildWeek, ensureWeek, monday };

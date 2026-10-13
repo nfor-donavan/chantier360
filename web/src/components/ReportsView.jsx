@@ -6,7 +6,7 @@ import { api, uploadMedia } from '../api.js';
 import { useApi } from '../hooks.js';
 import Gate from './Gate.jsx';
 import { Bar, Lightbox } from './bits.jsx';
-import { fmtDate, fmtXAF, num } from '../utils.js';
+import { fmtDate, fmtXAF, num, weekEnd } from '../utils.js';
 
 const PHOTO = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'], VIDEO = ['video/mp4', 'video/quicktime', 'video/webm', 'video/3gpp'];
 
@@ -35,6 +35,7 @@ export default function ReportsView({ fixedSite }) {
         <div className="tabs wide" role="tablist">
           {['daily', 'weekly'].map((k) => <button key={k} role="tab" aria-selected={type === k} className={type === k ? 'on' : ''} onClick={() => choose(k)}>{t('rt.' + k)}</button>)}
         </div>
+        {type === 'weekly' && <p className="muted small">{t('rt.weekNote')}</p>}
         <div className="inline-form filters">
           {!fixedSite && <label className="mini">{t('rt.project')}<select value={site} onChange={(e) => { setSite(e.target.value); setOpen(null); }}><option value="">{t('rt.allprojects')}</option>{(projects.data || []).map((p) => <option key={p._id} value={p._id}>{p.siteName}</option>)}</select></label>}
           <label className="mini">{t('rt.from')}<input type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></label>
@@ -57,8 +58,8 @@ export default function ReportsView({ fixedSite }) {
               <thead><tr><th>{t('rt.week')}</th>{!fixedSite && <th>{t('col.site')}</th>}<th>{t('rt.status')}</th><th className="r">{t('rt.tasks')}</th><th className="r">{t('rt.progress')}</th><th>{t('rt.release')}</th><th /></tr></thead>
               <tbody>{list.data.map((w) => (
                 <tr key={w._id} className={open === w._id ? 'sel' : ''} onClick={() => setOpen(w._id)}>
-                  <td>{fmtDate(w.weekStart, lang)} {t('to')} {fmtDate(new Date(+new Date(w.weekStart) + 6 * 864e5), lang)}</td>{!fixedSite && <td>{w.siteId?.siteName}</td>}
-                  <td><span className={'tag ' + (w.status === 'locked' ? 'ok' : 'neutral')}>{t('rt.' + w.status)}</span></td><td className="r">{w.tasks}</td><td className="r">{w.avgProgress}%</td>
+                  <td>{fmtDate(w.weekStart, lang)} {t('to')} {fmtDate(weekEnd(w.weekStart), lang)}</td>{!fixedSite && <td>{w.siteId?.siteName}</td>}
+                  <td><span className={'tag ' + (w.status === 'locked' ? 'ok' : 'neutral')}>{t('rt.' + w.status)}</span>{w.submitted && w.status !== 'locked' && <span className="tag ok" style={{ marginLeft: 6 }}>{t('rt.submitted')}</span>}</td><td className="r">{w.tasks}</td><td className="r">{w.avgProgress}%</td>
                   <td>{w.clientVisible ? <span className="tag ok">✓</span> : <span className="muted">-</span>}</td><td><button className="btn no" onClick={() => setOpen(w._id)}>{t('rt.open')}</button></td>
                 </tr>))}</tbody>
             </>)}
@@ -166,7 +167,7 @@ function WeeklyDetail({ id, onClose, onChanged }) {
   return (
     <Gate states={[w]}>{() => {
       const d = w.data, locked = d.status === 'locked', editable = !locked && can('MANAGE_WEEKLY_REPORTS'), s = d.summary || {};
-      const period = `${fmtDate(d.weekStart, lang)} ${t('to')} ${fmtDate(d.weekEnd, lang)}`;
+      const period = `${fmtDate(d.weekStart, lang)} ${t('to')} ${fmtDate(weekEnd(d.weekStart), lang)}`;
       const set = (taskId, k, v) => setEdits({ ...edits, [taskId]: { ...edits[taskId], [k]: v } });
       const val = (r, k) => (edits[r.taskId]?.[k] !== undefined ? edits[r.taskId][k] : r[k] ?? '');
       const save = () => act(() => api.updateWeekly(id, { rows: Object.entries(edits).map(([taskId, v]) => ({ taskId, ...v })), objectives: notes.objectives, notes: notes.notes }));
@@ -174,7 +175,7 @@ function WeeklyDetail({ id, onClose, onChanged }) {
         <section className="panel print-area report-detail">
           <PrintHeader title={t('rt.weekly')} project={d.siteId?.siteName} period={period} />
           <div className="toolbar between noprint">
-            <h3>{t('rt.weekly')} · {d.siteId?.siteName} · {period} <span className={'tag ' + (locked ? 'ok' : 'neutral')}>{t('rt.' + d.status)}</span></h3>
+            <h3>{t('rt.weekly')} · {d.siteId?.siteName} · {period} <span className={'tag ' + (locked ? 'ok' : 'neutral')}>{t('rt.' + d.status)}</span>{d.submittedAt && !locked && <span className="tag ok" style={{ marginLeft: 6 }}>{t('rt.submitted')}{d.submittedBy?.name ? ` · ${d.submittedBy.name}` : ''}</span>}</h3>
             <div className="actions">
               {locked && can('MANAGE_CLIENT_PORTAL') && <label className="check"><input type="checkbox" checked={!!d.clientVisible} onChange={(e) => act(() => api.releaseWeekly(id, e.target.checked))} /> {t('rt.release')}</label>}
               {editable && <button className="btn ok" onClick={save}>{t('save')}</button>}

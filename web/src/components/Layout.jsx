@@ -46,13 +46,15 @@ export default function Layout({ children }) {
         <div className="side-foot">
           <Toggles />
           <div className="who"><div className="avatar">{user.name.split(' ').map((w) => w[0]).slice(0, 2).join('')}</div><div><b>{user.name}</b><span>{roleName(t, user.role, user.roleLabel)}</span></div></div>
-          <button className="ghost" onClick={logout}><LogOut size={16} /> {t('signout')}</button>
         </div>
       </aside>
       <main className="main">
         <header className="top">
           <h1>{t('title.' + key) === 'title.' + key ? 'Chantier360' : t('title.' + key)}</h1>
+          <div className="top-actions">
           <div className="tenant">{user.tenant?.logoUrl ? <img className="tenant-logo" src={user.tenant.logoUrl} alt="" /> : <span className="dot" />}<b>{user.tenant?.companyName}</b></div>
+          <button className="signout" onClick={logout} title={t('signout')}><LogOut size={16} /> <span>{t('signout')}</span></button>
+          </div>
         </header>
         <div className="content">{children}</div>
       </main>

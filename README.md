@@ -45,6 +45,9 @@ The client portal is now deny-by-default. After migrating, existing projects sho
 - **Live figures:** dashboards and tables refresh every 30 seconds and when you return to the tab.
 - **Company settings:** the Director edits the company name and logo, shown in the header, on printed reports, in the client portal and on the foreman app.
 
+## Weekly reports
+The working week is **Monday to Saturday**. The weekly report builds itself: the first daily report of a week creates it, and every later daily report refreshes it while it is still a draft. The foreman opens it in the app (Weekly report), adds planned percentages, reasons and observations, and sends it to the office. The Engineer or Director can edit, then lock it. A locked report never changes. The Director can release a locked report to the client.
+
 ## Media storage
 Without Cloudinary credentials, photos and videos are kept on the server disk, which Render wipes on every deploy, and they are served through expiring signed links. For real use set `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY` and `CLOUDINARY_API_SECRET` on the backend. Cloudinary files are stored permanently, and their links are long unguessable URLs that are only ever sent to authorised users, but they are not time-limited.
 

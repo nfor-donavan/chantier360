@@ -4,6 +4,7 @@ const { Role, User, Client, WorkforceCategory, ProjectSite } = require('../model
 const { PERMISSIONS } = require('../permissions');
 const { can, clearRoleCache } = require('../middleware/auth');
 const { httpError, wrap } = require('../utils/http');
+const { createCategory } = require('../services/records');
 
 // Roles and permissions (the access matrix)
 router.get('/roles', can('MANAGE_USERS'), wrap(async (req, res) => {
@@ -46,9 +47,8 @@ router.patch('/users/:id', can('MANAGE_USERS'), wrap(async (req, res) => {
 
 // Workforce categories: configurable per company
 router.get('/workforce-categories', wrap(async (req, res) => { res.json(await WorkforceCategory.find({ tenantId: req.user.tenantId }).sort({ order: 1 }).lean()); }));
-router.post('/workforce-categories', can('MANAGE_PROJECTS'), wrap(async (req, res) => {
-  if (!req.body.name) throw httpError(400, 'name is required');
-  res.status(201).json(await WorkforceCategory.create({ tenantId: req.user.tenantId, name: req.body.name, order: req.body.order || 99 }));
+router.post('/workforce-categories', can('MANAGE_PROJECTS', 'MANAGE_WORKFORCE'), wrap(async (req, res) => {
+  res.status(201).json(await createCategory({ tenantId: req.user.tenantId, data: req.body }));
 }));
 router.delete('/workforce-categories/:id', can('MANAGE_PROJECTS'), wrap(async (req, res) => {
   await WorkforceCategory.deleteOne({ _id: req.params.id, tenantId: req.user.tenantId });

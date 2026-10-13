@@ -1,9 +1,9 @@
 // [English, French]
 const D = {
   'nav.overview': ['Overview', "Vue d'ensemble"], 'nav.projects': ['Projects & timeline', 'Projets et planning'], 'nav.materials': ['Materials', 'Matériaux'],
-  'nav.attendance': ['Labour attendance', 'Présence des ouvriers'], 'nav.reports': ['Daily reports', 'Rapports journaliers'], 'nav.alerts': ['Alerts', 'Alertes'], 'nav.access': ['Roles & access', 'Rôles et accès'], 'signout': ['Sign out', 'Déconnexion'],
+  'nav.attendance': ['Labour attendance', 'Présence des ouvriers'], 'nav.reports': ['Reports', 'Rapports'], 'nav.alerts': ['Alerts', 'Alertes'], 'nav.access': ['Roles & access', 'Rôles et accès'], 'signout': ['Sign out', 'Déconnexion'],
   'title.overview': ['Operations overview', "Vue d'ensemble des opérations"], 'title.projects': ['Projects & timeline', 'Projets et planning'], 'title.project': ['Project', 'Projet'], 'title.materials': ['Materials & requests', 'Matériaux et demandes'],
-  'title.attendance': ['Labour attendance', 'Présence des ouvriers'], 'title.reports': ['Daily reports', 'Rapports journaliers'], 'title.alerts': ['Alerts', 'Alertes'], 'title.access': ['Roles & access', 'Rôles et accès'], 'title.portal': ['Client portal', 'Portail client'],
+  'title.attendance': ['Labour attendance', 'Présence des ouvriers'], 'title.reports': ['Reports', 'Rapports'], 'title.alerts': ['Alerts', 'Alertes'], 'title.access': ['Roles & access', 'Rôles et accès'], 'title.portal': ['Client portal', 'Portail client'],
   'role.director': ['General Director', 'Directeur général'], 'role.engineer': ['Engineer', 'Ingénieur'], 'role.foreman': ['Site Foreman', 'Chef de chantier'], 'role.client': ['Client', 'Client'],
   'login.title': ['Sign in to Chantier360', 'Connexion à Chantier360'], 'login.sub': ['MAC Construction Co. · demo workspace', 'MAC Construction Co. · espace de démonstration'],
   'email': ['Email', 'E-mail'], 'password': ['Password', 'Mot de passe'], 'signin': ['Sign in', 'Se connecter'], 'signingin': ['Signing in…', 'Connexion…'],
@@ -77,6 +77,7 @@ const D = {
   'po.updates': ['Latest updates', 'Dernières nouvelles'], 'po.noPhotos': ['No photos have been shared yet.', "Aucune photo n'a encore été partagée."], 'po.noUpdates': ['No updates yet.', 'Aucune nouvelle pour le moment.'], 'po.expected': ['Expected completion', 'Fin prévue'],
   'po.view': ['View progress', "Voir l'avancement"], 'po.empty': ['No project is shared with you yet.', "Aucun projet n'est encore partagé avec vous."], 'po.welcome': ['Welcome', 'Bienvenue'],
 
+  'rt.submitted': ['Sent by foreman', 'Envoyé par le chef de chantier'], 'perm.SUBMIT_WEEKLY_REPORTS': ['Complete and send the weekly report (field)', 'Compléter et envoyer le rapport hebdomadaire (terrain)'], 'rt.weekNote': ['Weeks run Monday to Saturday. The report builds itself from the daily reports.', 'Les semaines vont du lundi au samedi. Le rapport se construit automatiquement à partir des rapports journaliers.'],
   'nav.company': ['Company settings', 'Paramètres de la société'], 'title.company': ['Company settings', 'Paramètres de la société'], 'login.sub2': ['Demo workspace', 'Espace de démonstration'],
   'co.name': ['Company name', 'Nom de la société'], 'co.logo': ['Company logo', 'Logo de la société'], 'co.logoHelp': ['PNG, JPG or WebP. It is resized automatically and shown next to the company name, on printed reports, in the client portal and on the foreman app.', "PNG, JPG ou WebP. Il est redimensionné automatiquement et affiché à côté du nom de la société, sur les rapports imprimés, dans le portail client et sur l'application chef de chantier."],
   'co.upload': ['Upload logo', 'Téléverser le logo'], 'co.remove': ['Remove logo', 'Retirer le logo'], 'co.preview': ['Preview', 'Aperçu'], 'co.bad': ['Choose an image file (PNG, JPG or WebP).', 'Choisissez un fichier image (PNG, JPG ou WebP).'], 'perm.MANAGE_COMPANY': ['Edit company name and logo', 'Modifier le nom et le logo de la société'],
