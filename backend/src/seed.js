@@ -2,7 +2,7 @@
 // The centrepiece project (Maison des Avocats) mirrors the structure of the company's own site documents.
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
-const { MONGO_URI } = require('./config');
+const { connect } = require('./db');
 const M = require('./models');
 const { DEFAULT_ROLES } = require('./permissions');
 const { createMaterialLog, createAttendance, createReport, createWorker } = require('./services/records');
@@ -15,7 +15,7 @@ const svg = (title, sub, a, b) => 'data:image/svg+xml;utf8,' + encodeURIComponen
   `<svg xmlns="http://www.w3.org/2000/svg" width="800" height="520" viewBox="0 0 800 520"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${a}"/><stop offset="1" stop-color="${b}"/></linearGradient></defs><rect width="800" height="520" fill="url(#g)"/><g fill="#ffffff" opacity=".18"><rect x="80" y="300" width="90" height="220"/><rect x="190" y="230" width="90" height="290"/><rect x="300" y="170" width="90" height="350"/><rect x="410" y="260" width="90" height="260"/></g><text x="40" y="70" font-family="Arial" font-size="38" font-weight="700" fill="#fff">${title}</text><text x="40" y="110" font-family="Arial" font-size="22" fill="#ffffffcc">${sub}</text><text x="40" y="490" font-family="Arial" font-size="16" fill="#ffffff99">Demo placeholder, replaced by real site photos</text></svg>`);
 
 (async () => {
-  await mongoose.connect(MONGO_URI);
+  await connect();
   for (const m of Object.values(M)) await m.deleteMany({}).setOptions({ skipTenant: true });
   const hash = await bcrypt.hash('demo1234', 10);
 

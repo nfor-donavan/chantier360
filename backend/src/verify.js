@@ -1,12 +1,12 @@
 // Consistency check: confirms that the figures on dashboards agree with the saved records.
 // Run it after changes (`npm run verify`). Exits with an error if any check fails.
 const mongoose = require('mongoose');
-const { MONGO_URI } = require('./config');
+const { connect } = require('./db');
 const M = require('./models');
 const { summarize } = require('./services/progress');
 
 (async () => {
-  await mongoose.connect(MONGO_URI);
+  await connect();
   let failures = 0;
   const check = (ok, label, detail = '') => { if (!ok) failures++; console.log(`${ok ? 'PASS' : 'FAIL'}  ${label}${ok ? '' : '  ' + detail}`); };
   for (const t of await M.Tenant.find({})) {

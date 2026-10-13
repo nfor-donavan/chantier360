@@ -5,12 +5,12 @@
 //  - rebuilds indexes
 // The client portal is deny-by-default now, so existing projects show clients nothing until the Director releases it.
 const mongoose = require('mongoose');
-const { MONGO_URI } = require('./config');
+const { connect } = require('./db');
 const M = require('./models');
 const { DEFAULT_ROLES, PERMISSIONS } = require('./permissions');
 
 (async () => {
-  await mongoose.connect(MONGO_URI);
+  await connect();
   const tenants = await M.Tenant.find({});
   for (const t of tenants) {
     for (const [key, def] of Object.entries(DEFAULT_ROLES)) {
