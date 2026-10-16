@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { NavLink, Link, useLocation } from 'react-router-dom';
-import { LayoutDashboard, HardHat, PackageCheck, Users, BellRing, LogOut, Sun, Moon, FileText, ShieldCheck, Wallet, Building2 } from 'lucide-react';
+import { LayoutDashboard, HardHat, PackageCheck, Users, BellRing, LogOut, Sun, Moon, FileText, ShieldCheck, Wallet, Building2, Menu, ArrowLeftRight, Truck } from 'lucide-react';
 import { useStore } from '../store.jsx';
 import { api } from '../api.js';
 import { roleName } from '../utils.js';
+import NexusFooter from '../nexus/NexusFooter.jsx';
 
 export function Toggles() {
   const { lang, setLang, theme, setTheme, t } = useStore();
@@ -21,19 +22,21 @@ export function Toggles() {
 
 const nav = [
   ['/', 'overview', LayoutDashboard, () => true], ['/projects', 'projects', HardHat, (c) => c('VIEW_PROGRESS')], ['/materials', 'materials', PackageCheck, (c) => c('VIEW_MATERIALS')],
-  ['/attendance', 'attendance', Users, (c) => c('VIEW_ATTENDANCE') || c('APPROVE_ATTENDANCE')], ['/reports', 'reports', FileText, (c) => c('VIEW_REPORTS')], ['/expenses', 'expenses', Wallet, (c) => c('VIEW_EXPENSES')],
+  ['/attendance', 'attendance', Users, (c) => c('VIEW_ATTENDANCE') || c('APPROVE_ATTENDANCE')], ['/reports', 'reports', FileText, (c) => c('VIEW_REPORTS')], ['/expenses', 'expenses', Wallet, (c) => c('VIEW_EXPENSES')], ['/transfers', 'transfers', ArrowLeftRight, (c) => c('VIEW_TRANSFERS')], ['/assets', 'assets', Truck, (c) => c('VIEW_ASSETS')],
   ['/alerts', 'alerts', BellRing, (c) => c('VIEW_ALERTS')], ['/access', 'access', ShieldCheck, (c) => c('MANAGE_USERS')], ['/company', 'company', Building2, (c) => c('MANAGE_COMPANY')],
 ];
 
 export default function Layout({ children }) {
   const { user, logout, toast, t, tick, can } = useStore();
   const { pathname } = useLocation();
-  const [open, setOpen] = useState(0);
+  const [open, setOpen] = useState(0), [menu, setMenu] = useState(false);
+  useEffect(() => { setMenu(false); }, [pathname]);
   useEffect(() => { if (can('VIEW_ALERTS')) api.alerts(true).then((a) => setOpen(a.length)).catch(() => {}); }, [pathname, tick]); // eslint-disable-line
   const key = pathname === '/' ? 'overview' : pathname.startsWith('/projects/') ? 'project' : pathname.slice(1);
   return (
     <div className="shell">
-      <aside className="side">
+      {menu && <div className="side-overlay" onClick={() => setMenu(false)} aria-hidden="true" />}
+      <aside className={'side' + (menu ? ' open' : '')} aria-label="Main navigation">
         <div className="brand"><img src="/logo.png" alt="" /><div><b>Chantier360</b><span>{roleName(t, user.role, user.roleLabel)}</span></div></div>
         <nav>
           {nav.filter(([, , , ok]) => ok(can)).map(([to, k, Icon]) => (
@@ -50,6 +53,7 @@ export default function Layout({ children }) {
       </aside>
       <main className="main">
         <header className="top">
+          <button className="menu-btn" onClick={() => setMenu(true)} aria-label={t('nav.menu')}><Menu size={22} /></button>
           <h1>{t('title.' + key) === 'title.' + key ? 'Chantier360' : t('title.' + key)}</h1>
           <div className="top-actions">
           <div className="tenant">{user.tenant?.logoUrl ? <img className="tenant-logo" src={user.tenant.logoUrl} alt="" /> : <span className="dot" />}<b>{user.tenant?.companyName}</b></div>
@@ -57,6 +61,7 @@ export default function Layout({ children }) {
           </div>
         </header>
         <div className="content">{children}</div>
+        <NexusFooter tenantName={user.tenant?.companyName} />
       </main>
       {toast && <div className="toast" role="status">{toast}</div>}
     </div>
@@ -72,6 +77,7 @@ export function PortalLayout({ children }) {
         <div className="portal-tools"><Toggles /><span className="portal-user">{user.name}</span><button className="ghost slim" onClick={logout}><LogOut size={15} /> {t('signout')}</button></div>
       </header>
       <div className="portal-body">{children}</div>
+      <NexusFooter tenantName={user.tenant?.companyName} />
       {toast && <div className="toast" role="status">{toast}</div>}
     </div>
   );

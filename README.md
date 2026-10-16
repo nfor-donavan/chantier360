@@ -20,7 +20,7 @@ The demo company is **Group LAN BTP** (name and logo are editable under *Company
 | Web | engineer@mac-construction.cm | Engineer | Views assigned projects, reports, deliveries, workforce, media. Creates and locks weekly reports. Cannot create or edit projects, tasks or finances |
 | Web | secretary@mac-construction.cm | Secretary | Budgets and expenses (view, add, edit), reports, project information. Cannot delete expenses, edit budgets, manage users or the client portal |
 | Web | client@ordre-avocats.cm | Client | Client portal: only what the Director released |
-| Mobile | foreman@mac-construction.cm | Site Foreman | Maison des Avocats |
+| Mobile and web | foreman@mac-construction.cm | Site Foreman | Maison des Avocats. Can sign in on the phone app or on the web (same account, same permissions) |
 | Mobile | carine@mac-construction.cm | Site Foreman | Kribi Port Warehouse |
 | Isolation check | director@rival-btp.cm | Other company | Sees nothing of the demo company's data |
 
@@ -31,7 +31,27 @@ npm run migrate   # keeps your data: adds the Secretary role and new permissions
 npm run seed      # alternative: wipes everything and reloads the demo data
 npm run verify    # checks that dashboards agree with the saved records
 ```
+After `npm run migrate`, existing tasks are not linked to timeline stages and there are no storage locations until you create them (Material transfers, Add a location).
+
 The client portal is now deny-by-default. After migrating, existing projects show clients nothing until the Director releases it (Project > Client portal).
+
+## What V4 adds (Group LAN BTP requirements)
+- **Approvals with confirmation and revocation:** Approve and Reject open a confirmation dialog naming the record. Approved records can be revoked with a required reason; they go back to pending. The original approval stays in the history (who, when, why). Two people acting at once cannot both succeed, and a stale screen is told the record changed. Revoking attendance is refused once a locked weekly report covers the day.
+- **Monthly reports and annual overview:** Reports now has Daily, Weekly, Monthly and Annual. Everything is recalculated from stored records: expenses (month and year to date, by category and project), work completed, workforce, deliveries, stock movements, materials used, difficulties. Months with no records show a dash and a note, never a silent zero. Progress at month end is only shown where a weekly report exists. The annual total is checked against the twelve months and the raw records. Print uses the existing print layout (save as PDF from the browser).
+- **Clickable timeline stages:** every stage opens a detail panel with description, planned and actual dates, completion, linked tasks, reports, weekly reports, photos and videos, materials used, difficulties, delays and outstanding work. Link tasks to a stage in the Tasks tab (edit a task, choose the stage). Nothing is copied: media and reports stay where they were recorded.
+- **Material transfers:** record a transfer between warehouses, other storage and project sites. One exit and one entry are written together, a transfer is never counted as a purchase or delivery, negative stock is refused, retries do not repeat it, and every movement is kept in the history. Project stock tables show transfers in their own columns.
+- **Assets register:** vehicles, machinery, equipment and tools with status, condition, location and assigned project, plus maintenance notes. The Director edits. Engineer and Secretary view only. Foremen have no access on the web or on the phone.
+- **Foreman on the web:** foremen sign in on the web with the same account. They get a phone-friendly interface for attendance and the workforce register, deliveries, the daily report, the weekly report and photos. It needs an internet connection; the phone app is the one that works offline.
+- **Responsive web:** mobile menu, dialogs that fit small screens, tables that scroll inside their panel, larger touch targets.
+- **Nexus branding:** preloader, "Powered by" footer and splash screen (see `web/src/nexus/README.md`).
+
+## Tests
+```
+cd backend
+npm test        # unit tests for permissions, approval rules, monthly and annual maths, transfer rules, signed links
+npm run verify  # checks stored data for consistency (needs a database)
+```
+The unit tests need no database. There are no automated tests yet for the HTTP routes or the web screens.
 
 ## What V3 adds
 - **Workforce register (foreman app):** register and remove workers, pick who is present. Removing a worker marks them inactive. Past attendance keeps the name it was recorded with. Duplicate names and double attendance on one day are refused. Works offline.

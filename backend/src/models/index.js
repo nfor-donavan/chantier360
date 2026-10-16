@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 const tenantScope = require('../plugins/tenantScope');
 const { Schema } = mongoose;
 const ref = (name) => ({ type: Schema.Types.ObjectId, ref: name });
+const historySchema = new Schema({ action: String, by: { type: Schema.Types.ObjectId, ref: 'User' }, byName: String, at: { type: Date, default: Date.now }, reason: String, fromStatus: String, toStatus: String }, { _id: false }); // who approved, revoked or rejected, when and why
 const scoped = (name, schema) => { schema.plugin(tenantScope); return mongoose.model(name, schema); };
 const partialUnique = (schema) => schema.index({ tenantId: 1, clientId: 1 }, { unique: true, partialFilterExpression: { clientId: { $type: 'string' } } });
 
@@ -54,12 +55,12 @@ const Task = scoped('Task', new Schema({
   name: { type: String, required: true }, category: { type: String, default: 'General' }, phase: String, subcontractor: String, unit: { type: String, default: 'u' },
   totalQty: { type: Number, required: true, min: 0 }, cumulativeQty: { type: Number, default: 0, min: 0 },
   weeklyQty: { type: Number, default: 0, min: 0 }, weekKey: String,
-  weight: { type: Number, default: 1, min: 0 }, weeklyTargetPct: Number, reportedPct: { type: Number, min: 0, max: 100, default: null }, reportedBy: ref('User'), reportedAt: Date, delayReason: String, observation: String, clientVisible: { type: Boolean, default: true },
+  weight: { type: Number, default: 1, min: 0 }, milestoneId: ref('Milestone'), weeklyTargetPct: Number, reportedPct: { type: Number, min: 0, max: 100, default: null }, reportedBy: ref('User'), reportedAt: Date, delayReason: String, observation: String, clientVisible: { type: Boolean, default: true },
 }, { timestamps: true }));
 
 const Milestone = scoped('Milestone', new Schema({
   siteId: { ...ref('ProjectSite'), required: true, index: true },
-  name: { type: String, required: true }, plannedDate: Date, order: { type: Number, default: 0 },
+  name: { type: String, required: true }, description: String, plannedStart: Date, plannedDate: Date, actualStart: Date, actualEnd: Date, order: { type: Number, default: 0 },
   status: { type: String, enum: ['Completed', 'InProgress', 'Upcoming'], default: 'Upcoming' }, clientVisible: { type: Boolean, default: true },
 }, { timestamps: true }));
 
@@ -78,9 +79,10 @@ const ClientUpdate = scoped('ClientUpdate', new Schema({
 const WorkforceCategory = scoped('WorkforceCategory', new Schema({ name: { type: String, required: true }, order: { type: Number, default: 0 } }));
 
 const stockSchema = new Schema({
-  siteId: { ...ref('ProjectSite'), required: true, index: true }, materialType: { type: String, required: true },
+  siteId: { ...ref('ProjectSite'), index: true }, locationId: ref('StorageLocation'), // a project's own stock has no locationId; a warehouse has no siteId
+  materialType: { type: String, required: true },
   kind: { type: String, enum: ['opening', 'in', 'out'], required: true }, quantity: { type: Number, required: true, min: 0 },
-  source: { type: String, enum: ['delivery', 'report', 'manual'], default: 'manual' }, party: String, refId: String, date: { type: Date, default: Date.now },
+  source: { type: String, enum: ['delivery', 'report', 'manual', 'transfer'], default: 'manual' }, party: String, refId: String, date: { type: Date, default: Date.now },
 }, { timestamps: true });
 const StockEntry = scoped('StockEntry', stockSchema);
 
@@ -109,7 +111,7 @@ const attendanceSchema = new Schema({
   workers: [new Schema({ uid: String, name: String, category: String }, { _id: false })], // names are copied in, so history survives a worker being removed
   siteGroupPhotoUrl: String, flagged: { type: Boolean, default: false },
   status: { type: String, enum: ['Pending_HQ_Approval', 'Approved', 'Rejected'], default: 'Pending_HQ_Approval' },
-  loggedBy: ref('User'), decidedBy: ref('User'), decidedAt: Date,
+  loggedBy: ref('User'), decidedBy: ref('User'), decidedAt: Date, approvalHistory: [historySchema],
 }, { timestamps: true });
 partialUnique(attendanceSchema);
 attendanceSchema.index({ tenantId: 1, siteId: 1, date: -1 });
@@ -159,6 +161,27 @@ const Expense = scoped('Expense', new Schema({
   payee: String, reference: String, receiptUrl: String, enteredBy: ref('User'), updatedBy: ref('User'),
 }, { timestamps: true }));
 
+// Places that hold company materials besides projects: warehouses and other storage. A project is also a location (referred to as site:<id>).
+const StorageLocation = scoped('StorageLocation', new Schema({ name: { type: String, required: true }, type: { type: String, enum: ['warehouse', 'storage', 'other'], default: 'warehouse' }, address: String, active: { type: Boolean, default: true } }, { timestamps: true }));
+
+// An internal transfer of materials. It writes one exit and one entry (source 'transfer') so stock moves exactly once.
+const refSchema = new Schema({ kind: { type: String, enum: ['site', 'loc'], required: true }, id: { type: String, required: true }, name: String }, { _id: false });
+const movementSchema = new Schema({
+  clientId: String, materialType: { type: String, required: true }, quantity: { type: Number, required: true, min: 0 }, unit: String,
+  from: { type: refSchema, required: true }, to: { type: refSchema, required: true }, date: { type: Date, default: Date.now },
+  reason: String, reference: String, evidenceUrl: String, createdBy: ref('User'),
+}, { timestamps: true });
+movementSchema.index({ tenantId: 1, clientId: 1 }, { unique: true, partialFilterExpression: { clientId: { $type: 'string' } } });
+const MaterialMovement = scoped('MaterialMovement', movementSchema);
+
+// Reusable company assets (trucks, machinery, equipment). Consumable materials stay in stock, not here.
+const Asset = scoped('Asset', new Schema({
+  name: { type: String, required: true }, category: { type: String, required: true }, identifier: String, quantity: { type: Number, default: 1, min: 0 },
+  status: { type: String, enum: ['Operational', 'In maintenance', 'Out of service', 'Retired'], default: 'Operational' }, condition: { type: String, enum: ['Good', 'Fair', 'Poor'], default: 'Good' },
+  location: refSchema, locationNote: String, assignedSiteId: ref('ProjectSite'), ownership: String, acquiredOn: Date, notes: String,
+  maintenance: [new Schema({ date: Date, note: String, by: ref('User'), byName: String })], createdBy: ref('User'), updatedBy: ref('User'),
+}, { timestamps: true }));
+
 // Record of corrections and deletions, so removing a record never leaves an unexplained gap.
 const AuditLog = scoped('AuditLog', new Schema({
   entity: String, entityId: String, action: String, siteId: ref('ProjectSite'), by: ref('User'), snapshot: Schema.Types.Mixed, at: { type: Date, default: Date.now },
@@ -167,7 +190,7 @@ const AuditLog = scoped('AuditLog', new Schema({
 const requestSchema = new Schema({
   siteId: { ...ref('ProjectSite'), required: true }, materialType: { type: String, required: true }, quantity: { type: Number, required: true, min: 1 },
   estimateXAF: { type: Number, default: 0 }, requestedBy: ref('User'),
-  status: { type: String, enum: ['Pending', 'Approved', 'Rejected'], default: 'Pending' }, decidedBy: ref('User'), decidedAt: Date,
+  status: { type: String, enum: ['Pending', 'Approved', 'Rejected'], default: 'Pending' }, decidedBy: ref('User'), decidedAt: Date, approvalHistory: [historySchema],
 }, { timestamps: true });
 const MaterialRequest = scoped('MaterialRequest', requestSchema);
 
@@ -180,4 +203,4 @@ alertSchema.index({ tenantId: 1, kind: 1, refId: 1 }, { unique: true });
 alertSchema.index({ tenantId: 1, acknowledged: 1, createdAt: -1 });
 const Alert = scoped('Alert', alertSchema);
 
-module.exports = { Worker, WeeklyReport, Expense, AuditLog, Tenant, Role, User, Client, ProjectSite, Task, Milestone, ProjectPhoto, ClientUpdate, WorkforceCategory, StockEntry, PurchaseOrder, MaterialLog, AttendanceLog, DailyReport, MaterialRequest, Alert };
+module.exports = { StorageLocation, MaterialMovement, Asset, Worker, WeeklyReport, Expense, AuditLog, Tenant, Role, User, Client, ProjectSite, Task, Milestone, ProjectPhoto, ClientUpdate, WorkforceCategory, StockEntry, PurchaseOrder, MaterialLog, AttendanceLog, DailyReport, MaterialRequest, Alert };

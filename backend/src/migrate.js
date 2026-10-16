@@ -19,7 +19,8 @@ const { DEFAULT_ROLES, PERMISSIONS } = require('./permissions');
       let perms = new Set(role.permissions);
       if (key === 'director') PERMISSIONS.filter((p) => DEFAULT_ROLES.director.permissions.includes(p)).forEach((p) => perms.add(p));
       if (key === 'foreman') { perms.add('MANAGE_WORKFORCE'); perms.add('SUBMIT_WEEKLY_REPORTS'); }
-      if (key === 'engineer') { perms.add('MANAGE_WEEKLY_REPORTS'); perms.delete('MANAGE_TASKS'); }
+      if (key === 'engineer') { perms.add('MANAGE_WEEKLY_REPORTS'); perms.delete('MANAGE_TASKS'); ['VIEW_ASSETS', 'VIEW_TRANSFERS', 'MANAGE_TRANSFERS'].forEach((p) => perms.add(p)); }
+      if (key === 'secretary') ['VIEW_ASSETS', 'VIEW_TRANSFERS'].forEach((p) => perms.add(p));
       await M.Role.updateOne({ _id: role._id, tenantId: t._id }, { permissions: [...perms] });
     }
   }

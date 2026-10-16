@@ -1,5 +1,5 @@
 const router = require('express').Router();
-const { DailyReport, WeeklyReport, ProjectSite } = require('../models');
+const { DailyReport, WeeklyReport, ProjectSite, Expense, AttendanceLog, MaterialLog, StockEntry, Task } = require('../models');
 const { can, scoped, assertProject, pickProject } = require('../middleware/auth');
 const { createReport } = require('../services/records');
 const { buildWeek, ensureWeek, monday } = require('../services/weekly');
@@ -61,6 +61,40 @@ router.patch('/daily/:id', can('MANAGE_CLIENT_PORTAL'), wrap(async (req, res) =>
   const r = await daily(req);
   r.clientVisible = !!req.body.clientVisible; await r.save();
   res.json({ _id: r._id, clientVisible: r.clientVisible });
+}));
+
+// ---------- Monthly and annual reports: recalculated from the stored records every time ----------
+async function periodData(req, year) {
+  const t = req.user.tenantId;
+  if (req.query.siteId) assertProject(req, req.query.siteId);
+  const site = { ...scoped(req), ...(req.query.siteId && { siteId: req.query.siteId }) };
+  const from = new Date(Date.UTC(year, 0, 1)), to = new Date(Date.UTC(year + 1, 0, 1)), range = { $gte: from, $lt: to };
+  const financial = req.has('VIEW_EXPENSES');
+  const [sites, expenses, daily, attendance, deliveries, stock, weekly, tasks] = await Promise.all([
+    ProjectSite.find({ tenantId: t, ...scoped(req, '_id'), ...(req.query.siteId && { _id: req.query.siteId }) }).select('siteName').lean(),
+    financial ? Expense.find({ tenantId: t, ...site, date: range }).lean() : [],
+    DailyReport.find({ tenantId: t, ...site, date: range }).lean(),
+    AttendanceLog.find({ tenantId: t, ...site, date: range, status: { $ne: 'Rejected' } }).lean(),
+    MaterialLog.find({ tenantId: t, ...site, deliveryDate: range }).lean(),
+    StockEntry.find({ tenantId: t, ...site, locationId: null, date: range }).lean(),
+    WeeklyReport.find({ tenantId: t, ...site, weekStart: range }).lean(),
+    Task.find({ tenantId: t, ...site }).lean(),
+  ]);
+  const { pctOf } = require('../services/progress');
+  return { sites, expenses, daily, attendance, deliveries, stock, weekly, tasks: tasks.map((x) => ({ ...x, progressPct: pctOf(x) })), financial };
+}
+const num = (v, d, lo, hi) => { const n = v === undefined ? d : Number(v); if (!Number.isInteger(n) || n < lo || n > hi) throw httpError(400, 'Invalid period'); return n; };
+router.get('/monthly', can('VIEW_REPORTS'), wrap(async (req, res) => {
+  const now = new Date(), year = num(req.query.year, now.getUTCFullYear(), 2000, 2100), month = num(req.query.month, now.getUTCMonth() + 1, 1, 12);
+  const { buildMonthly } = require('../services/monthly');
+  const data = await periodData(req, year);
+  res.json({ ...buildMonthly(data, year, month), sites: data.sites });
+}));
+router.get('/annual', can('VIEW_REPORTS'), wrap(async (req, res) => {
+  const year = num(req.query.year, new Date().getUTCFullYear(), 2000, 2100);
+  const { buildAnnual } = require('../services/monthly');
+  const data = await periodData(req, year);
+  res.json({ ...buildAnnual(data, year), sites: data.sites });
 }));
 
 // ---------- Weekly reports ----------

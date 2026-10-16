@@ -23,6 +23,12 @@ const { summarize } = require('./services/progress');
     const bad = logs.filter((l) => (byRef[String(l._id)] || []).length !== 1 || byRef[String(l._id)][0].quantity !== l.quantityReceived);
     check(bad.length === 0, 'every delivery has exactly one matching stock entry', `${bad.length} mismatched`);
     check(entries.every((e) => logs.some((l) => String(l._id) === e.refId)), 'no stock entry points at a deleted delivery');
+    const moves = await M.MaterialMovement.find({ tenantId }).lean(), tEntries = await M.StockEntry.find({ tenantId, source: 'transfer' }).lean();
+    check(moves.every((mv) => { const e = tEntries.filter((x) => x.refId === String(mv._id)); return e.length === 2 && e.filter((x) => x.kind === 'out').length === 1 && e.every((x) => x.quantity === mv.quantity); }), 'every transfer has exactly one exit and one entry of the same quantity');
+    check(tEntries.every((e) => moves.some((mv) => String(mv._id) === e.refId)), 'no transfer entry without its movement');
+    const locs = await M.StorageLocation.find({ tenantId }).lean(); let negative = 0;
+    for (const l of locs) { const by = {}; (await M.StockEntry.find({ tenantId, locationId: l._id }).lean()).forEach((r) => { by[r.materialType] = (by[r.materialType] || 0) + (r.kind === 'out' ? -r.quantity : r.quantity); }); negative += Object.values(by).filter((v) => v < 0).length; }
+    check(negative === 0, 'no location has negative stock', `${negative} negative balances`);
     const pos = await M.PurchaseOrder.find({ tenantId }).lean();
     check(pos.every((p) => (p.status === 'Received') === logs.some((l) => String(l.orderId) === String(p._id))), 'purchase order status matches its deliveries');
     check(logs.every((l) => l.shortfall === Math.max(0, l.quantityOrdered - l.quantityReceived) && l.flagged === (l.quantityReceived < l.quantityOrdered)), 'shortfall and flags match quantities');

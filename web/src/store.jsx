@@ -25,7 +25,8 @@ export function StoreProvider({ children }) {
 
   const login = async (email, password) => {
     const { token, user: u } = await api.login(email, password);
-    const web = u.permissions.includes('VIEW_DASHBOARD') || u.permissions.includes('VIEW_CLIENT_PORTAL');
+    const field = ['MANAGE_ATTENDANCE', 'SUBMIT_REPORTS', 'MANAGE_DELIVERIES'].some((p) => u.permissions.includes(p));
+    const web = u.permissions.includes('VIEW_DASHBOARD') || u.permissions.includes('VIEW_CLIENT_PORTAL') || field;
     if (!web) throw Object.assign(new Error('nohq'), { status: 403 });
     setToken(token); persist(u);
   };

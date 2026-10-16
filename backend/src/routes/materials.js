@@ -2,6 +2,7 @@ const router = require('express').Router();
 const { MaterialLog, MaterialRequest, PurchaseOrder } = require('../models');
 const { can, scoped, assertProject, pickProject } = require('../middleware/auth');
 const { createMaterialLog, updateMaterialLog, deleteMaterialLog } = require('../services/records');
+const { applyDecision } = require('../services/approvals');
 const { httpError, wrap } = require('../utils/http');
 const own = require('../utils/populate');
 
@@ -46,7 +47,7 @@ router.post('/orders', can('MANAGE_PROJECTS'), wrap(async (req, res) => {
 
 // Material requests
 router.get('/requests', can('VIEW_MATERIALS'), wrap(async (req, res) => {
-  const list = await MaterialRequest.find({ ...where(req), ...(req.query.status && { status: req.query.status }) }).sort({ createdAt: -1 }).populate(own(req, 'requestedBy')).populate(own(req, 'siteId', 'siteName')).lean();
+  const list = await MaterialRequest.find({ ...where(req), ...(req.query.status && { status: req.query.status }) }).sort({ createdAt: -1 }).populate(own(req, 'requestedBy')).populate(own(req, 'siteId', 'siteName')).populate(own(req, 'decidedBy')).lean();
   res.json(req.has('VIEW_PROJECT_FINANCIALS') ? list : list.map(({ estimateXAF, ...r }) => r));
 }));
 router.post('/requests', can('MANAGE_DELIVERIES'), wrap(async (req, res) => {
@@ -54,11 +55,14 @@ router.post('/requests', can('MANAGE_DELIVERIES'), wrap(async (req, res) => {
   const { materialType, quantity, estimateXAF } = req.body;
   res.status(201).json(await MaterialRequest.create({ tenantId: req.user.tenantId, siteId, materialType, quantity, estimateXAF, requestedBy: req.user.id }));
 }));
-router.patch('/requests/:id', can('APPROVE_REQUESTS'), wrap(async (req, res) => {
+// Nothing else happens when a request is approved (no purchase order is created from it), so revoking it only reverses its status.
+const decide = (action) => wrap(async (req, res) => { res.json(await applyDecision({ Model: MaterialRequest, kind: 'request', req, id: req.params.id, action, body: req.body || {} })); });
+router.post('/requests/:id/approve', can('APPROVE_REQUESTS'), decide('approve'));
+router.post('/requests/:id/reject', can('APPROVE_REQUESTS'), decide('reject'));
+router.post('/requests/:id/revoke', can('APPROVE_REQUESTS'), decide('revoke'));
+router.patch('/requests/:id', can('APPROVE_REQUESTS'), wrap(async (req, res) => { // older clients
   const { status } = req.body;
   if (!['Approved', 'Rejected'].includes(status)) throw httpError(400, 'status must be Approved or Rejected');
-  const doc = await MaterialRequest.findOneAndUpdate({ _id: req.params.id, tenantId: req.user.tenantId, status: 'Pending', ...scoped(req) }, { status, decidedBy: req.user.id, decidedAt: new Date() }, { new: true });
-  if (!doc) throw httpError(404, 'Pending request not found');
-  res.json(doc);
+  res.json(await applyDecision({ Model: MaterialRequest, kind: 'request', req, id: req.params.id, action: status === 'Approved' ? 'approve' : 'reject', body: { expectedStatus: 'Pending' } }));
 }));
 module.exports = router;

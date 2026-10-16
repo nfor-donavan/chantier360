@@ -6,6 +6,7 @@ import { api } from '../api.js';
 import { useApi } from '../hooks.js';
 import Gate from '../components/Gate.jsx';
 import ReportsView from '../components/ReportsView.jsx';
+import StageDetail from '../components/StageDetail.jsx';
 import { Bar, Lightbox } from '../components/bits.jsx';
 import { fmtDate, fmtXAF, num } from '../utils.js';
 
@@ -14,11 +15,11 @@ export default function ProjectRoute() { const { id } = useParams(); return <Pro
 function ProjectDetail({ id }) {
   const { t, can, lang } = useStore();
   const ov = useApi(() => api.project(id));
-  const [tab, setTab] = useState('overview');
+  const [tab, setTab] = useState('overview'), [stage, setStage] = useState(null);
   const tabs = ['overview', 'tasks', 'timeline', 'photos', can('VIEW_STOCK') && 'stock', can('VIEW_REPORTS') && 'reports', can('MANAGE_CLIENT_PORTAL') && 'portal', (can('MANAGE_PROJECTS') || can('MANAGE_PROJECT_FINANCIALS')) && 'settings'].filter(Boolean);
   return (
     <Gate states={[ov]}>{() => {
-      const o = ov.data, p = o.project, props = { o, id, reload: ov.reload };
+      const o = ov.data, p = o.project, props = { o, id, reload: ov.reload, openStage: setStage };
       return (
         <>
           <Link to="/projects" className="back"><ArrowLeft size={16} /> {t('back')}</Link>
@@ -35,6 +36,7 @@ function ProjectDetail({ id }) {
           {tab === 'reports' && <ProjectReports {...props} />}
           {tab === 'portal' && <PortalTab {...props} />}
           {tab === 'settings' && <Settings {...props} />}
+          {stage && <StageDetail projectId={id} stageId={stage} onClose={() => setStage(null)} onChanged={ov.reload} />}
         </>
       );
     }}</Gate>
@@ -43,7 +45,7 @@ function ProjectDetail({ id }) {
 
 const MsIcon = ({ s }) => (s === 'Completed' ? <CheckCircle2 className="ms done" size={22} /> : s === 'InProgress' ? <Clock className="ms now" size={22} /> : <Circle className="ms" size={22} />);
 
-function Overview({ o, id, reload }) {
+function Overview({ o, id, reload, openStage }) {
   const { t, can, lang, notify } = useStore();
   const p = o.project, [msg, setMsg] = useState('');
   const post = async (e) => { e.preventDefault(); try { await api.addUpdate(id, msg); setMsg(''); notify(t('toast.saved')); reload(); } catch (err) { notify(err.message); } };
@@ -79,7 +81,8 @@ function Overview({ o, id, reload }) {
       <div className="grid2">
         <section className="panel">
           <h3>{t('tab.timeline')}</h3>
-          <ol className="tline">{o.milestones.map((m) => <li key={m._id} className={m.status}><MsIcon s={m.status} /><div><b>{m.name}</b><span>{fmtDate(m.plannedDate, lang)}</span></div></li>)}</ol>
+          <p className="muted small">{t('sd.open')}</p>
+          <ol className="tline">{o.milestones.map((m) => <li key={m._id} className={m.status + ' clickable'} role="button" tabIndex={0} onClick={() => openStage(m._id)} onKeyDown={(e) => e.key === 'Enter' && openStage(m._id)}><MsIcon s={m.status} /><div><b>{m.name}</b><span>{fmtDate(m.plannedDate, lang)}</span></div></li>)}</ol>
         </section>
         <section className="panel">
           <h3>{t('ov.updates')}</h3>
@@ -97,7 +100,7 @@ function Tasks({ o, id, reload }) {
   const [edit, setEdit] = useState(null), [draft, setDraft] = useState({}), [adding, setAdding] = useState(false), [nt, setNt] = useState({ unit: 'm²' });
   const groups = o.tasks.reduce((a, x) => { (a[x.category || 'General'] ||= []).push(x); return a; }, {});
   const act = async (fn) => { try { await fn(); reload(); bump(); notify(t('toast.saved')); } catch (e) { notify(e.message); } };
-  const save = (task) => act(async () => { await api.updateTask(id, task._id, { cumulativeQty: Number(draft.cumulativeQty), weeklyQty: Number(draft.weeklyQty), weeklyTargetPct: draft.weeklyTargetPct === '' ? '' : Number(draft.weeklyTargetPct), reportedPct: draft.reportedPct === '' || draft.reportedPct == null ? '' : Number(draft.reportedPct), delayReason: draft.delayReason, observation: draft.observation }); setEdit(null); });
+  const save = (task) => act(async () => { await api.updateTask(id, task._id, { cumulativeQty: Number(draft.cumulativeQty), weeklyQty: Number(draft.weeklyQty), weeklyTargetPct: draft.weeklyTargetPct === '' ? '' : Number(draft.weeklyTargetPct), reportedPct: draft.reportedPct === '' || draft.reportedPct == null ? '' : Number(draft.reportedPct), milestoneId: draft.milestoneId || '', delayReason: draft.delayReason, observation: draft.observation }); setEdit(null); });
   const add = (e) => { e.preventDefault(); act(async () => { await api.addTask(id, { ...nt, totalQty: Number(nt.totalQty), cumulativeQty: Number(nt.cumulativeQty || 0) }); setAdding(false); setNt({ unit: 'm²' }); }); };
   const D = (k) => (e) => setDraft({ ...draft, [k]: e.target.value });
   return (
@@ -131,7 +134,7 @@ function Tasks({ o, id, reload }) {
                 const behind = k.weeklyTargetPct != null && k.progressPct < k.weeklyTargetPct;
                 return edit === k._id ? (
                   <tr key={k._id} className="editing">
-                    <td>{k.subcontractor}</td><td>{k.name}</td><td>{k.unit}</td><td className="r">{num(k.totalQty)}</td>
+                    <td>{k.subcontractor}</td><td>{k.name}<select className="stage-select" aria-label={t('tk.stage')} value={draft.milestoneId || ''} onChange={D('milestoneId')}><option value="">{t('sd.noStage')}</option>{o.milestones.map((m) => <option key={m._id} value={m._id}>{m.name}</option>)}</select></td><td>{k.unit}</td><td className="r">{num(k.totalQty)}</td>
                     <td className="r"><input className="s" type="number" step="any" value={draft.cumulativeQty} onChange={D('cumulativeQty')} /></td>
                     <td className="r"><input className="s" type="number" step="any" value={draft.weeklyQty} onChange={D('weeklyQty')} /></td>
                     <td><input className="s" type="number" min="0" max="100" step="any" placeholder="%" aria-label={t('tk.reported')} title={t('tk.pctnote')} value={draft.reportedPct ?? ''} onChange={D('reportedPct')} /></td>
@@ -142,12 +145,12 @@ function Tasks({ o, id, reload }) {
                   </tr>
                 ) : (
                   <tr key={k._id} className={behind ? 'flag' : ''}>
-                    <td>{k.subcontractor}</td><td>{k.name}</td><td>{k.unit}</td><td className="r">{num(k.totalQty)}</td><td className="r">{num(k.cumulativeQty)}</td><td className="r">{num(k.weeklyQty)}</td>
+                    <td>{k.subcontractor}</td><td>{k.name}{k.milestoneId && <div className="muted small">{o.milestones.find((m) => m._id === k.milestoneId)?.name}</div>}</td><td>{k.unit}</td><td className="r">{num(k.totalQty)}</td><td className="r">{num(k.cumulativeQty)}</td><td className="r">{num(k.weeklyQty)}</td>
                     <td><div className="cat tight"><Bar value={k.progressPct} /><b>{Math.round(k.progressPct)}%</b></div>{k.reportedPct != null && <div className="muted small">{t('tk.manual')} · {Math.round(k.calculatedPct)}% {t('tk.calculated')}</div>}</td>
                     <td className="r">{k.weeklyTargetPct != null ? `${k.weeklyTargetPct}%` : ''}</td>
                     <td>{behind && <span className="tag bad">{t('tk.behind')}</span>} {k.delayReason ? <span className="muted">{k.delayReason}</span> : k.observation}</td>
                     {can('MANAGE_CLIENT_PORTAL') && <td className="noprint"><input type="checkbox" aria-label={t('tk.client')} checked={!!k.clientVisible} onChange={(e) => act(() => api.updateTask(id, k._id, { clientVisible: e.target.checked }))} /></td>}
-                    {can('MANAGE_TASKS') && <td className="noprint"><button className="btn no" onClick={() => { setEdit(k._id); setDraft({ cumulativeQty: k.cumulativeQty, weeklyQty: k.weeklyQty, reportedPct: k.reportedPct ?? '', weeklyTargetPct: k.weeklyTargetPct ?? '', observation: k.observation || '', delayReason: k.delayReason || '' }); }}>{t('tk.edit')}</button></td>}
+                    {can('MANAGE_TASKS') && <td className="noprint"><button className="btn no" onClick={() => { setEdit(k._id); setDraft({ cumulativeQty: k.cumulativeQty, weeklyQty: k.weeklyQty, milestoneId: k.milestoneId || '', reportedPct: k.reportedPct ?? '', weeklyTargetPct: k.weeklyTargetPct ?? '', observation: k.observation || '', delayReason: k.delayReason || '' }); }}>{t('tk.edit')}</button></td>}
                   </tr>
                 );
               })}
@@ -159,18 +162,19 @@ function Tasks({ o, id, reload }) {
   );
 }
 
-function Timeline({ o, id, reload }) {
+function Timeline({ o, id, reload, openStage }) {
   const { t, can, lang, notify } = useStore();
   const [f, setF] = useState({ name: '', plannedDate: '' });
   const act = async (fn) => { try { await fn(); reload(); } catch (e) { notify(e.message); } };
   return (
     <section className="panel">
       <h3>{t('tab.timeline')}</h3>
+      <p className="muted small">{t('sd.open')}</p>
       <ol className="tline big">
         {o.milestones.map((m) => (
-          <li key={m._id} className={m.status}><MsIcon s={m.status} />
+          <li key={m._id} className={m.status + ' clickable'} role="button" tabIndex={0} onClick={() => openStage(m._id)} onKeyDown={(e) => e.key === 'Enter' && openStage(m._id)}><MsIcon s={m.status} />
             <div><b>{m.name}</b><span>{fmtDate(m.plannedDate, lang)}</span></div>
-            {can('MANAGE_PROJECTS') && <select value={m.status} aria-label={t('se.status')} onChange={(e) => act(() => api.updateMilestone(id, m._id, { status: e.target.value }))}>{['Completed', 'InProgress', 'Upcoming'].map((s) => <option key={s} value={s}>{t('ms.' + s)}</option>)}</select>}
+            {can('MANAGE_PROJECTS') && <select value={m.status} aria-label={t('se.status')} onClick={(e) => e.stopPropagation()} onChange={(e) => act(() => api.updateMilestone(id, m._id, { status: e.target.value }))}>{['Completed', 'InProgress', 'Upcoming'].map((s) => <option key={s} value={s}>{t('ms.' + s)}</option>)}</select>}
           </li>
         ))}
       </ol>
@@ -234,8 +238,8 @@ function Stock({ id }) {
         <section className="panel">
           <h3>{t('tab.stock')}</h3>
           <table>
-            <thead><tr><th>{t('st.material')}</th><th className="r">{t('st.opening')}</th><th className="r">{t('st.in')}</th><th className="r">{t('st.out')}</th><th className="r">{t('st.closing')}</th></tr></thead>
-            <tbody>{st.data.summary.map((s) => <tr key={s.materialType} className={s.closing <= 0 ? 'flag' : ''}><td>{s.materialType}</td><td className="r">{num(s.opening)}</td><td className="r">{num(s.incoming)}</td><td className="r">{num(s.outgoing)}</td><td className="r"><b>{num(s.closing)}</b></td></tr>)}</tbody>
+            <thead><tr><th>{t('st.material')}</th><th className="r">{t('st.opening')}</th><th className="r">{t('st.in')}</th><th className="r">{t('mo.tin')}</th><th className="r">{t('st.out')}</th><th className="r">{t('mo.tout')}</th><th className="r">{t('st.closing')}</th></tr></thead>
+            <tbody>{st.data.summary.map((s) => <tr key={s.materialType} className={s.closing <= 0 ? 'flag' : ''}><td>{s.materialType}</td><td className="r">{num(s.opening)}</td><td className="r">{num(s.incoming)}</td><td className="r">{num(s.transferIn)}</td><td className="r">{num(s.outgoing)}</td><td className="r">{num(s.transferOut)}</td><td className="r"><b>{num(s.closing)}</b></td></tr>)}</tbody>
           </table>
         </section>
         <section className="panel">

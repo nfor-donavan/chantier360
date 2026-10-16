@@ -3,14 +3,23 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/png" href="/favicon.png" />
+    <style>:root{--nx-blue:#0040C8;--nx-dark:#3A4150;--nx-bg:#fff}[data-theme=dark]{--nx-blue:#4C7BFF;--nx-dark:#C5CCDA;--nx-bg:#0B1426}body{margin:0}.nx-pre{display:grid;place-items:center;align-content:center;gap:22px;background:var(--nx-bg);padding:24px}.nx-pre.full{position:fixed;inset:0;z-index:50}.nx-orbit{position:relative;width:104px;height:104px;display:grid;place-items:center}.nx-ring{position:absolute;inset:0;border-radius:50%;border:3px solid rgba(0,64,200,.15);border-top-color:var(--nx-blue);animation:nxspin 1s linear infinite}.nx-pulse{animation:nxpulse 1.6s ease-in-out infinite}.nx-word{margin:0;font:600 18px 'Orbitron',system-ui,sans-serif;letter-spacing:.2em;color:var(--nx-dark)}@keyframes nxspin{to{transform:rotate(360deg)}}@keyframes nxpulse{50%{transform:scale(.92);opacity:.8}}@media(prefers-reduced-motion:reduce){.nx-ring{animation-duration:3s}.nx-pulse{animation:none}}</style>
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Chantier360 · HQ Operations Portal</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Sans:wght@400;500;600&family=Orbitron:wght@600;700&display=swap" rel="stylesheet" />
   </head>
   <body>
-    <div id="root"></div>
+    <script>try{var t=localStorage.getItem('c360_theme')||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');document.documentElement.dataset.theme=t}catch(e){}</script>
+    <div id="root">
+      <div class="nx-pre full" role="status" aria-label="Loading">
+        <div class="nx-orbit"><span class="nx-ring"></span>
+          <svg class="nx-pulse" width="64" height="78" viewBox="0 0 495 605" aria-hidden="true"><polygon points="0,180 135,290 135,485 0,565" fill="var(--nx-dark,#3A4150)"/><polygon points="360,97 495,10 495,345 360,245" fill="var(--nx-dark,#3A4150)"/><path d="M0 0 L495 372 L495 605 L360 515 L360 470 L102 262 L0 190 Z" fill="var(--nx-blue,#0040C8)"/><circle cx="75" cy="170" r="62" fill="var(--nx-bg,#fff)"/><circle cx="75" cy="170" r="40" fill="var(--nx-blue,#0040C8)"/><circle cx="438" cy="440" r="62" fill="var(--nx-bg,#fff)"/><circle cx="438" cy="440" r="40" fill="var(--nx-blue,#0040C8)"/></svg>
+        </div>
+        <p class="nx-word">NEXUS</p>
+      </div>
+    </div>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>

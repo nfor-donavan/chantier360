@@ -1,9 +1,8 @@
 const crypto = require('crypto');
-const { JWT_SECRET } = require('../config');
 
 // Files kept on this server are served only through expiring signed links.
 // Anything returned by the API is rewritten on the way out, so only authenticated, authorised responses ever contain a usable link.
-const sig = (path, exp) => crypto.createHmac('sha256', JWT_SECRET).update(`${path}.${exp}`).digest('hex').slice(0, 32);
+const sig = (path, exp) => crypto.createHmac('sha256', process.env.JWT_SECRET || '').update(`${path}.${exp}`).digest('hex').slice(0, 32);
 function signUrl(url, ttlSec = 3600) {
   const i = url.indexOf('/media/');
   if (i < 0) return url;

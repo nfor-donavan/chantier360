@@ -1,11 +1,15 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
+import * as SplashScreen from 'expo-splash-screen';
 import { Alert, View, useColorScheme } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import NetInfo from '@react-native-community/netinfo';
 import { api, setToken } from './src/api';
 import { AppCtx, DARK, LIGHT, makeT } from './src/ctx';
 import { Attendance, Delivery, Home, Login, PhotoScreen, Report, Sync, Weekly } from './src/screens';
+
+// Keep the Nexus splash on screen until the saved session, queue and cache have loaded.
+SplashScreen.preventAutoHideAsync().catch(() => {});
 
 const uid = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`; // client-side id so retries never duplicate
 const save = (k, v) => AsyncStorage.setItem(k, JSON.stringify(v)).catch(() => {});
@@ -194,7 +198,8 @@ export default function App() {
   };
   const availableOrders = view.orders.filter((o) => !queue.some((q) => q.type === 'delivery' && q.orderId === o._id));
 
-  if (!ready) return <View style={{ flex: 1, backgroundColor: '#0F1E38' }} />;
+  useEffect(() => { if (ready) SplashScreen.hideAsync().catch(() => {}); }, [ready]);
+  if (!ready) return null;
   const back = () => setScreen('home');
   return (
     <AppCtx.Provider value={{ C, t, lang, setLang, toggleTheme }}>

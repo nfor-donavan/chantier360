@@ -14,3 +14,6 @@ export function Lightbox({ photo, onClose, label }) {
     </div>
   );
 }
+
+export const Tbl = ({ head, children }) => <table className="rep-table"><thead><tr>{head.map((h, i) => <th key={i} className={h.r ? 'r' : ''}>{h.t ?? h}</th>)}</tr></thead><tbody>{children}</tbody></table>;
+export const Sec = ({ title, children }) => <div className="rp-sec"><h4>{title}</h4>{children}</div>;

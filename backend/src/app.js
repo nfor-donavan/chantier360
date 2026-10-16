@@ -25,6 +25,8 @@ app.use('/api/materials', requireAuth, require('./routes/materials'));
 app.use('/api/attendance', requireAuth, require('./routes/attendance'));
 app.use('/api/workers', requireAuth, require('./routes/workers'));
 app.use('/api/expenses', requireAuth, require('./routes/expenses'));
+app.use('/api/transfers', requireAuth, require('./routes/transfers'));
+app.use('/api/assets', requireAuth, require('./routes/assets'));
 app.use('/api/reports', requireAuth, require('./routes/reports'));
 app.use('/api/sync', requireAuth, require('./routes/sync'));
 app.use('/api/alerts', requireAuth, require('./routes/alerts'));

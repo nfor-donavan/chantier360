@@ -7,9 +7,9 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./assets/nexus-splash.png",
       "resizeMode": "contain",
-      "backgroundColor": "#0F1E38"
+      "backgroundColor": "#FFFFFF"
     },
     "android": {
       "package": "cm.chantier360.foreman",

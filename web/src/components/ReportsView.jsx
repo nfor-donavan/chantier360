@@ -5,7 +5,9 @@ import { useStore } from '../store.jsx';
 import { api, uploadMedia } from '../api.js';
 import { useApi } from '../hooks.js';
 import Gate from './Gate.jsx';
-import { Bar, Lightbox } from './bits.jsx';
+import { Bar, Lightbox, Tbl, Sec } from './bits.jsx';
+import PrintHeader from './PrintHeader.jsx';
+import PeriodReports from './PeriodReports.jsx';
 import { fmtDate, fmtXAF, num, weekEnd } from '../utils.js';
 
 const PHOTO = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'], VIDEO = ['video/mp4', 'video/quicktime', 'video/webm', 'video/3gpp'];
@@ -20,7 +22,8 @@ export default function ReportsView({ fixedSite }) {
   const [open, setOpen] = useState(!fixedSite ? params.get('open') : null);
   const [genDate, setGenDate] = useState(new Date().toISOString().slice(0, 10));
   const projects = useApi(() => (fixedSite ? Promise.resolve([]) : api.projects()));
-  const list = useApi(() => (type === 'daily' ? api.dailyReports({ siteId: site, from, to }) : api.weeklyReports({ siteId: site, from, to })), { every: 30000 });
+  const period = type === 'monthly' || type === 'annual';
+  const list = useApi(() => (period ? Promise.resolve([]) : type === 'daily' ? api.dailyReports({ siteId: site, from, to }) : api.weeklyReports({ siteId: site, from, to })), { every: period ? undefined : 30000 });
   useEffect(() => { list.reload(); }, [type, site, from, to]); // eslint-disable-line
   const choose = (k) => { setType(k); setOpen(null); if (!fixedSite) setParams({}); };
   const generate = async () => {
@@ -29,12 +32,16 @@ export default function ReportsView({ fixedSite }) {
     try { const w = await api.generateWeekly(siteId, genDate); notify(t('toast.saved')); list.reload(); setOpen(w._id); } catch (e) { notify(e.message); }
   };
   const sum = (a, k) => (a || []).reduce((x, y) => x + (y[k] || 0), 0);
+  const tabsEl = (
+        <div className="tabs wide" role="tablist">
+          {['daily', 'weekly', 'monthly', 'annual'].map((k) => <button key={k} role="tab" aria-selected={type === k} className={type === k ? 'on' : ''} onClick={() => choose(k)}>{t('rt.' + k)}</button>)}
+        </div>
+  );
+  if (period) return (<><section className="panel noprint">{tabsEl}</section><PeriodReports type={type} fixedSite={fixedSite} projects={projects.data || []} /></>);
   return (
     <>
       <section className="panel noprint">
-        <div className="tabs wide" role="tablist">
-          {['daily', 'weekly'].map((k) => <button key={k} role="tab" aria-selected={type === k} className={type === k ? 'on' : ''} onClick={() => choose(k)}>{t('rt.' + k)}</button>)}
-        </div>
+        {tabsEl}
         {type === 'weekly' && <p className="muted small">{t('rt.weekNote')}</p>}
         <div className="inline-form filters">
           {!fixedSite && <label className="mini">{t('rt.project')}<select value={site} onChange={(e) => { setSite(e.target.value); setOpen(null); }}><option value="">{t('rt.allprojects')}</option>{(projects.data || []).map((p) => <option key={p._id} value={p._id}>{p.siteName}</option>)}</select></label>}
@@ -70,13 +77,6 @@ export default function ReportsView({ fixedSite }) {
     </>
   );
 }
-
-function PrintHeader({ title, project, period }) {
-  const { user, t, lang } = useStore();
-  return <div className="print-header">{user.tenant?.logoUrl && <img className="print-logo" src={user.tenant.logoUrl} alt="" />}<h2>{user.tenant?.companyName}</h2><h3>{title}</h3><p>{project}{period ? ` · ${period}` : ''}</p><p className="small">{t('rt.printedOn')} {fmtDate(new Date(), lang)}</p></div>;
-}
-const Tbl = ({ head, children }) => <table className="rep-table"><thead><tr>{head.map((h, i) => <th key={i} className={h.r ? 'r' : ''}>{h.t ?? h}</th>)}</tr></thead><tbody>{children}</tbody></table>;
-const Sec = ({ title, children }) => <div className="rp-sec"><h4>{title}</h4>{children}</div>;
 
 function MediaUploader({ attach, onDone }) {
   const { t } = useStore();

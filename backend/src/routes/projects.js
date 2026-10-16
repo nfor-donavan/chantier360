@@ -1,5 +1,5 @@
 const router = require('express').Router();
-const { ProjectSite, Task, Milestone, ProjectPhoto, ClientUpdate, StockEntry } = require('../models');
+const { ProjectSite, Task, Milestone, ProjectPhoto, ClientUpdate, StockEntry, DailyReport, WeeklyReport } = require('../models');
 const { can, scoped, assertProject, redact } = require('../middleware/auth');
 const { httpError, wrap } = require('../utils/http');
 const own = require('../utils/populate');
@@ -9,9 +9,9 @@ const { createPhoto } = require('../services/records');
 
 const BASIC = ['siteName', 'locationCity', 'description', 'currentPhase', 'startDate', 'endDate', 'status', 'plannedWorkers', 'client'];
 const FIN = ['budgetXAF', 'spentXAF'];
-const TASK = ['name', 'category', 'phase', 'subcontractor', 'unit', 'totalQty', 'cumulativeQty', 'weeklyQty', 'weight', 'weeklyTargetPct', 'reportedPct', 'delayReason', 'observation', 'clientVisible'];
+const TASK = ['name', 'category', 'phase', 'subcontractor', 'unit', 'totalQty', 'cumulativeQty', 'weeklyQty', 'weight', 'milestoneId', 'weeklyTargetPct', 'reportedPct', 'delayReason', 'observation', 'clientVisible'];
 const PORTAL = ['progress', 'timeline', 'photos', 'videos', 'reports', 'statistics'];
-const MILE = ['name', 'plannedDate', 'status', 'order', 'clientVisible'];
+const MILE = ['name', 'description', 'plannedStart', 'plannedDate', 'actualStart', 'actualEnd', 'status', 'order', 'clientVisible'];
 const pick = (b, keys) => Object.fromEntries(keys.filter((k) => b[k] !== undefined).map((k) => [k, b[k] === '' ? null : b[k]]));
 const view = can('VIEW_PROGRESS', 'VIEW_DASHBOARD');
 
@@ -91,10 +91,53 @@ router.post('/:id/milestones', can('MANAGE_PROJECTS'), wrap(async (req, res) => 
 }));
 router.patch('/:id/milestones/:mid', can('MANAGE_PROJECTS'), wrap(async (req, res) => {
   const { id, mid } = req.params; assertProject(req, id);
-  const m = await Milestone.findOneAndUpdate({ _id: mid, tenantId: req.user.tenantId, siteId: id }, pick(req.body, MILE), { new: true, runValidators: true });
+  const set = pick(req.body, MILE), cur = await Milestone.findOne({ _id: mid, tenantId: req.user.tenantId, siteId: id });
+  if (!cur) throw httpError(404, 'Milestone not found');
+  // Actual dates follow the status unless someone types them in.
+  if (set.status && set.status !== cur.status) {
+    if (set.status === 'InProgress' && !cur.actualStart && !('actualStart' in set)) set.actualStart = new Date();
+    if (set.status === 'Completed') { if (!cur.actualEnd && !('actualEnd' in set)) set.actualEnd = new Date(); if (!cur.actualStart && !('actualStart' in set)) set.actualStart = new Date(); }
+    if (set.status !== 'Completed' && !('actualEnd' in set)) set.actualEnd = null;
+  }
+  const m = await Milestone.findOneAndUpdate({ _id: mid, tenantId: req.user.tenantId, siteId: id }, set, { new: true, runValidators: true });
   if (!m) throw httpError(404, 'Milestone not found');
   res.json(m);
 }));
+// Everything the system knows about one construction stage, gathered from the tasks linked to it. Nothing is copied: media and reports stay where they were recorded.
+router.get('/:id/milestones/:mid/detail', view, wrap(async (req, res) => {
+  const { id, mid } = req.params, t = req.user.tenantId; assertProject(req, id);
+  const stage = await Milestone.findOne({ _id: mid, tenantId: t, siteId: id }).lean();
+  if (!stage) throw httpError(404, 'Stage not found');
+  const tasks = await Task.find({ tenantId: t, siteId: id, milestoneId: mid }).sort({ category: 1, createdAt: 1 }).lean();
+  const ids = tasks.map((x) => x._id), idStr = new Set(ids.map(String));
+  const s = summarize(tasks);
+  const [reports, photos, weekly] = await Promise.all([
+    ids.length ? DailyReport.find({ tenantId: t, siteId: id, 'workPerformed.taskId': { $in: ids } }).sort({ date: -1 }).limit(60).populate(own(req, 'submittedBy')).lean() : [],
+    ids.length ? ProjectPhoto.find({ tenantId: t, siteId: id, taskId: { $in: ids } }).sort({ takenAt: -1 }).limit(60).lean() : [],
+    ids.length ? WeeklyReport.find({ tenantId: t, siteId: id, 'rows.taskId': { $in: ids } }).sort({ weekStart: -1 }).limit(20).lean() : [],
+  ]);
+  const used = {}, difficulties = [], seen = new Set(), media = [];
+  const dReports = reports.map((r) => {
+    (r.materialsUsed || []).forEach((m) => { used[m.materialType] = (used[m.materialType] || 0) + m.quantity; });
+    (r.difficulties || []).forEach((d) => difficulties.push({ date: r.date, issue: d.issue, solution: d.solution }));
+    (r.media || []).forEach((m) => { if (!seen.has(String(m._id))) { seen.add(String(m._id)); media.push({ _id: m._id, url: m.url, kind: m.kind, caption: m.caption, date: r.date }); } });
+    return { _id: r._id, date: r.date, submittedBy: r.submittedBy, work: (r.workPerformed || []).filter((w) => w.taskId && idStr.has(String(w.taskId))) };
+  });
+  photos.forEach((p) => { if (!seen.has(String(p._id))) { seen.add(String(p._id)); media.push({ _id: p._id, url: p.url, kind: 'photo', caption: p.caption, date: p.takenAt }); } });
+  const now = new Date(), late = stage.plannedDate && new Date(stage.plannedDate) < now && stage.status !== 'Completed';
+  res.json({
+    stage: { ...stage, plannedEnd: stage.plannedDate },
+    completionPct: tasks.length ? s.overall : null, stats: s.stats,
+    tasks: tasks.map((x) => ({ ...withPct(x), status: pctOfStatus(x) })),
+    planned: { totalQty: tasks.length, note: 'Quantities are per task; units differ, so they are not added together.' },
+    reports: dReports, weeklyReports: weekly.map((w) => ({ _id: w._id, weekStart: w.weekStart, status: w.status, rows: w.rows.filter((r) => idStr.has(String(r.taskId))) })),
+    media, materialsUsed: Object.entries(used).map(([materialType, quantity]) => ({ materialType, quantity })), difficulties,
+    delays: { stageLate: !!late, tasksBehindTarget: tasks.filter((x) => x.weeklyTargetPct != null && withPct(x).progressPct < x.weeklyTargetPct).map((x) => ({ name: x.name, progressPct: withPct(x).progressPct, target: x.weeklyTargetPct, reason: x.delayReason })) },
+    outstanding: tasks.filter((x) => withPct(x).progressPct < 100).map((x) => ({ name: x.name, unit: x.unit, remaining: Math.max(0, x.totalQty - x.cumulativeQty), progressPct: withPct(x).progressPct })),
+  });
+}));
+const pctOfStatus = (t) => { const p = withPct(t).progressPct; return p >= 100 ? 'Completed' : p > 0 ? 'InProgress' : 'NotStarted'; };
+
 router.delete('/:id/milestones/:mid', can('MANAGE_PROJECTS'), wrap(async (req, res) => {
   const { id, mid } = req.params; assertProject(req, id);
   await Milestone.deleteOne({ _id: mid, tenantId: req.user.tenantId, siteId: id });

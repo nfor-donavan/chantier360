@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { ShieldCheck } from 'lucide-react';
 import { useStore } from '../store.jsx';
 import { Toggles } from '../components/Layout.jsx';
+import NexusFooter from '../nexus/NexusFooter.jsx';
 
 const accounts = [
   { name: 'Mballa Armand', role: 'director', email: 'ceo@mac-construction.cm', initials: 'MA' },
@@ -48,6 +49,7 @@ export default function Login() {
           ))}
         </div>
       </section>
+      <NexusFooter className="login-foot" />
     </div>
   );
 }

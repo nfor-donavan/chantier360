@@ -7,6 +7,7 @@ const M = require('./models');
 const { DEFAULT_ROLES } = require('./permissions');
 const { createMaterialLog, createAttendance, createReport, createWorker } = require('./services/records');
 const { buildWeek } = require('./services/weekly');
+const { createTransfer } = require('./services/transfers');
 const { recomputeSpent } = require('./services/expenses');
 const { recomputeProgress } = require('./services/progress');
 
@@ -84,10 +85,15 @@ const svg = (title, sub, a, b) => 'data:image/svg+xml;utf8,' + encodeURIComponen
   };
   await quick(bastos, [88, 70, 52, 38]); await quick(bonanjo, [75, 60, 40, 41]); await quick(kribi, [100, 92, 80, 60]); await quick(bamenda, [40, 10, 0, 0]); await quick(garoua, [60, 22, 0, 0]);
 
-  await M.Milestone.create([
-    ['Foundation (radier)', 'Completed', '2025-08-30'], ['Basement structure SS-4 to SS-3', 'InProgress', '2026-11-30'], ['Basement SS-2 to SS-1', 'Upcoming', '2027-01-31'],
-    ['Superstructure', 'Upcoming', '2027-03-31'], ['Electrical and plumbing', 'Upcoming', '2027-05-15'], ['Finishing and handover', 'Upcoming', '2027-06-30'],
-  ].map(([name, status, date], order) => ({ tenantId, siteId: maison._id, name, status, plannedDate: d(date), order })));
+  const stages = await M.Milestone.create([
+    ['Foundation (radier)', 'Completed', '2025-08-30', 'Excavation, blinding, rebar and concrete of the raft slab.', '2025-03-03', '2025-03-10', '2025-09-12'],
+    ['Basement structure SS-4 to SS-3', 'InProgress', '2026-11-30', 'Walls, columns, beams and slabs of basement levels SS-4 and SS-3, stairs and lift shaft.', '2025-09-15', '2025-09-22', null],
+    ['Basement SS-2 to SS-1', 'Upcoming', '2027-01-31', 'Basement levels SS-2 and SS-1.', '2026-12-01', null, null],
+    ['Superstructure', 'Upcoming', '2027-03-31', 'Ground floor to roof structure.', '2027-02-01', null, null],
+    ['Electrical and plumbing', 'Upcoming', '2027-05-15', 'First and second fix of electrical and plumbing works.', '2027-03-15', null, null],
+    ['Finishing and handover', 'Upcoming', '2027-06-30', 'Tiling, painting, joinery and handover.', '2027-05-01', null, null],
+  ].map(([name, status, end, description, ps, as, ae], order) => ({ tenantId, siteId: maison._id, name, status, description, plannedStart: d(ps), plannedDate: d(end), actualStart: as ? d(as) : undefined, actualEnd: ae ? d(ae) : undefined, order })));
+  await M.Task.updateMany({ tenantId, siteId: maison._id }, { milestoneId: stages[1]._id }); // the current tasks belong to the basement structure stage
 
   await M.ProjectPhoto.create([
     ['Radier, block 03', 'Formwork complete', '2025-06-12', '#0F1E38', '#2B4C7E', true], ['Peripheral walls SS-4', 'Waterproofing applied', '2025-11-20', '#1B3A4B', '#2E7D6B', true],
@@ -179,9 +185,9 @@ const svg = (title, sub, a, b) => 'data:image/svg+xml;utf8,' + encodeURIComponen
 
   // Expenses for Maison des Avocats. "Spent" on the project is the total of these records.
   const EX = [
-    ['Subcontractors', 'Ferrailleur Ndeme: rebar works, phases SS-4 and SS-3', 1150000000, 'Ferrailleur Ndeme', '2026-08-20'], ['Materials', 'Cement, steel and aggregates, July to August', 980000000, 'Cimencam / Sotrafer', '2026-08-28'],
-    ['Labour', 'Direct labour, July to August', 410000000, 'Payroll', '2026-08-31'], ['Equipment', 'Crane and vibrator hire', 215000000, 'Loc-Engins SARL', '2026-08-25'],
-    ['Transport', 'Materials transport', 85000000, 'Transports Mfoundi', '2026-08-29'], ['Administration', 'Site office, insurance, permits', 60000000, 'Various', '2026-09-01'],
+    ['Subcontractors', 'Ferrailleur Ndeme: rebar works, phases SS-4 and SS-3', 1150000000, 'Ferrailleur Ndeme', '2026-03-20'], ['Materials', 'Cement, steel and aggregates', 980000000, 'Cimencam / Sotrafer', '2026-04-28'],
+    ['Labour', 'Direct labour', 410000000, 'Payroll', '2026-05-31'], ['Equipment', 'Crane and vibrator hire', 215000000, 'Loc-Engins SARL', '2026-06-25'],
+    ['Transport', 'Materials transport', 85000000, 'Transports Mfoundi', '2026-07-29'], ['Administration', 'Site office, insurance, permits', 60000000, 'Various', '2026-08-01'],
     ['Subcontractors', 'Coffreurs Albert and Otis: formwork', 150000000, 'Albert / Otis', '2026-09-02'], ['Materials', 'Hollow blocks and binding wire', 70000000, 'Briqueterie Mfoundi', '2026-09-03'],
   ];
   for (const [category, description, amountXAF, payee, date] of EX) await M.Expense.create({ tenantId, siteId: maison._id, category, description, amountXAF, payee, date: d(date), enteredBy: secretary._id });
@@ -195,6 +201,18 @@ const svg = (title, sub, a, b) => 'data:image/svg+xml;utf8,' + encodeURIComponen
   firstReport.clientVisible = true; await firstReport.save();
   const built = await buildWeek(tenantId, maison._id, d('2026-08-31'));
   await M.WeeklyReport.create({ tenantId, siteId: maison._id, createdBy: eng._id, status: 'locked', lockedBy: eng._id, lockedAt: d('2026-09-05'), clientVisible: true, objectives: 'Finish SS-3 wall rebar and formwork; start stair E1.', ...built });
+
+  // Company locations, a transfer between them, and the assets register.
+  const wh = await M.StorageLocation.create({ tenantId, name: 'Main warehouse, Yaoundé', type: 'warehouse', address: 'Zone industrielle de Bassa' });
+  await M.StorageLocation.create({ tenantId, name: 'Secondary storage, Douala', type: 'storage' });
+  await M.StockEntry.create({ tenantId, locationId: wh._id, materialType: 'Dangote Cement (bags)', kind: 'opening', quantity: 800, source: 'manual', date: d('2026-08-01') });
+  await createTransfer({ tenantId, userId: eng._id, data: { clientId: 'seed-transfer-1', materialType: 'Dangote Cement (bags)', quantity: 100, unit: 'bags', from: `loc:${wh._id}`, to: `site:${maison._id}`, date: d('2026-09-15'), reason: 'Top-up for the SS-3 slab pour', reference: 'BT-0147' } });
+  const A = (name, category, identifier, quantity, status, condition, location, locationNote, assignedSiteId) => M.Asset.create({ tenantId, name, category, identifier, quantity, status, condition, location, locationNote, assignedSiteId, createdBy: ceo._id });
+  await A('Mercedes Actros 3340 truck', 'Vehicle', 'LT 4521 AB', 1, 'Operational', 'Good', { kind: 'loc', id: String(wh._id), name: wh.name });
+  await A('Isuzu FVR truck', 'Vehicle', 'CE 9087 CD', 1, 'Operational', 'Fair', { kind: 'site', id: String(maison._id), name: 'Maison des Avocats' }, 'Hauling materials from the warehouse', maison._id);
+  await A('Concrete mixer', 'Machinery', 'CM-02', 2, 'Operational', 'Good', { kind: 'site', id: String(bastos._id), name: 'Bastos Residential Complex' }, undefined, bastos._id);
+  const gen = await A('Generator 40 kVA', 'Equipment', 'GEN-40-01', 1, 'In maintenance', 'Fair', { kind: 'loc', id: String(wh._id), name: wh.name }, 'Waiting for a new alternator');
+  gen.maintenance.push({ date: d('2026-09-18'), note: 'Alternator fault found. Part ordered.', by: ceo._id }); await gen.save();
 
   // Second company, to prove isolation.
   const akwa = await M.ProjectSite.create({ tenantId: rival._id, siteName: 'Akwa Commercial Centre', locationCity: 'Douala', budgetXAF: 900000000, spentXAF: 150000000, progressPct: 15, plannedWorkers: 30, startDate: d('2026-07-01'), status: 'Active' });

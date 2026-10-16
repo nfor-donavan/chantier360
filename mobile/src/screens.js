@@ -3,6 +3,7 @@ import { View, Text, TextInput, Pressable, ScrollView, Image, Switch, Alert, Act
 import { Button, Card, Label, PhotoBox, PhotoStrip, takePhoto, takeVideo } from './ui';
 import { useApp, demoForemen } from './ctx';
 import { api } from './api';
+import { PRODUCT, WATERMARK, brandStyles } from './brand';
 
 const Screen = ({ children }) => {
   const { C } = useApp();
@@ -63,10 +64,11 @@ export function Login({ onLogin, busy, error }) {
   const [email, setEmail] = useState(demoForemen[0].email);
   const [pw, setPw] = useState('demo1234');
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: C.header }} contentContainerStyle={{ padding: 24, paddingTop: 60 }} keyboardShouldPersistTaps="handled">
+    <View style={{ flex: 1, backgroundColor: C.header }}>
+    <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 24, paddingTop: 60, paddingBottom: 80 }} keyboardShouldPersistTaps="handled">
       <View style={{ alignItems: 'flex-end' }}><Toggles dark /></View>
       <Image source={require('../assets/logo.png')} style={{ width: 96, height: 96, marginTop: 12 }} />
-      <Text style={{ color: '#fff', fontSize: 38, fontWeight: '800', marginTop: 12 }}>Chantier360</Text>
+      <Text style={{ color: '#fff', fontSize: 38, fontWeight: '800', marginTop: 12 }}>{PRODUCT.name}</Text>
       <Text style={{ color: '#C5D0E4', fontSize: 16, marginTop: 4 }}>{t('tagline')}</Text>
       <Card style={{ marginTop: 28 }}>
         <Label>{t('email')}</Label>
@@ -86,6 +88,8 @@ export function Login({ onLogin, busy, error }) {
         </Pressable>
       ))}
     </ScrollView>
+    <View pointerEvents="none" style={brandStyles.bottomBrandWrapper}><Text style={brandStyles.brandText}>{WATERMARK}</Text></View>
+    </View>
   );
 }
 
